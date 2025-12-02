@@ -50,3 +50,6 @@ Then follow the on‑screen instructions:
 - Say or type `exit`, `quit`, `стоп`, `выход`, etc. to close Jarvis.
 App launching/closing is currently tuned for Linux (uses `pkill` and binary names like `telegram-desktop`, `firefox`, etc.). Adjust `app_commands` in `config.py` if your setup is different.
 
+Fast Local C++ Action Engine
+Jarvis now uses a separate C++ daemon (see `cpp/`) for instant system-level actions.  
+It handles fast app launching, URL opening, media controls, system commands, and window actions — all executed locally and independently from Python.
