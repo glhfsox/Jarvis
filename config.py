@@ -12,6 +12,7 @@ class Settings:
     openweather_api_key: str | None = None
     default_city: str = "Warsaw"
     app_commands: dict | None = None
+    use_wake_word : bool = False
 
 
 def load_settings() -> Settings:
@@ -29,10 +30,12 @@ def load_settings() -> Settings:
         "code": "code",
         "vscode": "code",
         "spotify": "spotify",
+        "terminal": "gnome-terminal",
     }
 
     return Settings(
         openai_key=api_key,
         openweather_api_key=ow_key,
         app_commands=app_commands,
+        use_wake_word=(os.getenv("Jarvis_wake_word" , "0") == "1" )
     )
