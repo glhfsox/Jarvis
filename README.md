@@ -10,6 +10,7 @@ Jarvis is a small local voice assistant that runs in your terminal. It listens t
 - Text‑to‑speech using `gpt-4o-mini-tts` streamed to `ffplay`.
 - Tools for opening URLs, launching/closing local apps, and fetching weather from OpenWeather.
 - Works both with spoken input and plain typed text.
+- Optional wake word (Porcupine) so you can just say “Jarvis” and speak your command.
 
 ## Requirements
 - Python 3.9+.

@@ -2,4 +2,6 @@ openai
 sounddevice
 numpy
 requests
-
+pvporcupine
+pvrecorder
+python-dotenv
