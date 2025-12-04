@@ -28,8 +28,9 @@ Tools:
      {"tool": "open_url", "args": {"url": "https://spotify.com"}}
 
 2) open_app(name: str)
-   - Launches a local application by name, e.g. "steam", "telegram", "firefox", "chrome", "chromium", "spotify".
-   - The assistant may receive names like "Telegram Desktop", "гугл хром", "спотифай";
+   - Launches a local application by name, e.g. "steam", "telegram", "firefox", "chrome", "chromium", "spotify",
+     editors like "code" / "vscode", or a terminal such as "terminal" / "gnome-terminal".
+   - The assistant may receive names like "Telegram Desktop", "гугл хром", "спотифай", "visual studio code", "терминал";
      these will be mapped internally to the correct app.
    - Example:
      {"tool": "open_app", "args": {"name": "telegram"}}
