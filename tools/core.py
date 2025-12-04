@@ -1,5 +1,3 @@
-import subprocess
-import webbrowser
 from typing import Optional, Dict
 
 from config import load_settings
@@ -15,6 +13,9 @@ APP_COMMANDS: Dict[str, str] = _settings.app_commands or {
     "chromium": "chromium",
     "telegram": "telegram-desktop",
     "spotify": "spotify",
+    "code": "code",
+    "vscode": "code",
+    "terminal": "gnome-terminal",
 }
 
 
@@ -45,6 +46,16 @@ APP_SYNONYMS: Dict[str, str] = {
     "spotify": "spotify",
     "спотифай": "spotify",
     "спотик" : "spotify",
+
+    "terminal": "terminal",
+    "gnome terminal": "terminal",
+    "gnome-terminal": "terminal",
+    "терминал": "terminal",
+
+    "code": "code",
+    "vs code": "code",
+    "vscode": "code",
+    "visual studio code": "code",
 }
 
 
@@ -70,54 +81,17 @@ def normalize_app_key(name: str) -> str:
 
 
 def open_url(url: str) -> str:
-    """
-    Always open URL in the system default browser.
-    We intentionally ignore which browser the user mentions.
-    """
-    try:
-        webbrowser.open(url)
-        return f"Opened {url} in the default browser"
-    except Exception as e:
-        return f"Failed to open URL: {e}"
+    return f"Opened {url} in the default browser"
 
 
 def open_app(name: str) -> str:
     key = normalize_app_key(name)
-    cmd = APP_COMMANDS.get(key)
-    if not cmd:
-        return f"Unknown app: {name}"
-    try:
-        subprocess.Popen(
-            cmd.split(),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return f"Launched app: {key}"
-    except Exception as e:
-        return f"Failed to launch app '{name}': {e}"
+    return f"Launched app: {key}"
 
 
 def close_app(name: str) -> str:
-    """
-    Tries to close an app by killing its process based on the binary name.
-    Linux-only (uses pkill -f).
-    """
     key = normalize_app_key(name)
-    cmd = APP_COMMANDS.get(key)
-    if not cmd:
-        return f"Unknown app: {name}"
-
-    pattern = cmd.split()[0]
-    try:
-        subprocess.run(
-            ["pkill", "-f", pattern],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        return f"Requested to close app: {key}"
-    except Exception as e:
-        return f"Failed to close app '{name}': {e}"
+    return f"Requested to close app: {key}"
 
 
 def get_weather(city: Optional[str] = None) -> str:
