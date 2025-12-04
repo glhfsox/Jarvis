@@ -1,5 +1,7 @@
 import os
 from dataclasses import dataclass
+from dotenv import load_dotenv
+load_dotenv()
 
 
 @dataclass
@@ -12,15 +14,15 @@ class Settings:
     openweather_api_key: str | None = None
     default_city: str = "Warsaw"
     app_commands: dict | None = None
-    use_wake_word : bool = False
+    use_wake_word: bool = False
 
 
 def load_settings() -> Settings:
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not set")
 
-    ow_key = os.getenv("OPENWEATHER_API_KEY")
+    ow_key = os.environ.get("OPENWEATHER_API_KEY")
 
     app_commands = {
         "steam": "steam",
@@ -30,12 +32,11 @@ def load_settings() -> Settings:
         "code": "code",
         "vscode": "code",
         "spotify": "spotify",
-        "terminal": "gnome-terminal",
     }
 
     return Settings(
         openai_key=api_key,
         openweather_api_key=ow_key,
         app_commands=app_commands,
-        use_wake_word=(os.getenv("Jarvis_wake_word" , "0") == "1" )
+        use_wake_word=(os.getenv("JARVIS_USE_WAKE_WORD", "0") == "1"),
     )
