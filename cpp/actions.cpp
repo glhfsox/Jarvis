@@ -200,6 +200,7 @@ struct WindowInfo {
     std::string title;
 };
 
+// basic window listing via wmctrl
 static std::vector<WindowInfo> list_windows() {
     std::vector<WindowInfo> res;
     FILE* pipe = popen("wmctrl -l", "r");
@@ -241,6 +242,44 @@ static std::string find_window_id_by_title(const std::string& query) {
     return {};
 }
 
+static void handleWindowInspect(const Command& cmd) {
+    std::string query;
+    auto it = cmd.args.find("name");
+    if (it != cmd.args.end()) {
+        query = it->second;
+    }
+
+    auto windows = list_windows();
+    if (windows.empty()) {
+        std::cerr << "Jarvis: no windows found via wmctrl\n";
+        return;
+    }
+
+    std::cout << "Jarvis: open windows:\n";
+    for (const auto& w : windows) {
+        std::cout << "  id=" << w.id << " | " << w.title << "\n";
+    }
+
+    if (!query.empty()) {
+        std::string qLower = toLowerCopy(query);
+        std::string bestId;
+        std::string bestTitle;
+        for (const auto& w : windows) {
+            std::string tLower = toLowerCopy(w.title);
+            if (tLower.find(qLower) != std::string::npos) {
+                bestId = w.id;
+                bestTitle = w.title;
+                break;
+            }
+        }
+        if (!bestId.empty()) {
+            std::cout << "Jarvis: best match for '" << query << "': id=" << bestId
+                      << " | " << bestTitle << "\n";
+        } else {
+            std::cout << "Jarvis: no window matching query '" << query << "'\n";
+        }
+    }
+}
 
 static int open_url_system(const std::string& rawUrl) {
     if (rawUrl.empty()) return -1;
@@ -465,9 +504,15 @@ static void handleSystemReboot(const Command&) {
 //  (wmctrl)
 
 static void handleWindowFocus(const Command& cmd) {
+    auto itId = cmd.args.find("id");
+    if (itId != cmd.args.end() && !itId->second.empty()) {
+        run_cmd("wmctrl -i -a '" + itId->second + "'");
+        return;
+    }
+
     auto it = cmd.args.find("name");
     if (it == cmd.args.end()) {
-        std::cerr << "Jarvis: window_focus: missing name\n";
+        std::cerr << "Jarvis: window_focus: missing name or id\n";
         return;
     }
     std::string title = it->second;
@@ -480,9 +525,15 @@ static void handleWindowFocus(const Command& cmd) {
 }
 
 static void handleWindowClose(const Command& cmd) {
+    auto itId = cmd.args.find("id");
+    if (itId != cmd.args.end() && !itId->second.empty()) {
+        run_cmd("wmctrl -i -c '" + itId->second + "'");
+        return;
+    }
+
     auto it = cmd.args.find("name");
     if (it == cmd.args.end()) {
-        std::cerr << "Jarvis: window_close: missing name\n";
+        std::cerr << "Jarvis: window_close: missing name or id\n";
         return;
     }
     std::string title = it->second;
@@ -543,6 +594,7 @@ void register_system_actions(CommandDispatcher& disp) {
 }
 
 void register_window_actions(CommandDispatcher& disp) {
-    disp.registerHandler("window_focus", handleWindowFocus);
-    disp.registerHandler("window_close", handleWindowClose);
+    disp.registerHandler("window_focus",   handleWindowFocus);
+    disp.registerHandler("window_close",   handleWindowClose);
+    disp.registerHandler("window_inspect", handleWindowInspect);
 }

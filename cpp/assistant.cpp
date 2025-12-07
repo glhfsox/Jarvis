@@ -154,8 +154,9 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "  - system_lock()\n";
     prompt += "  - system_shutdown()\n";
     prompt += "  - system_reboot()\n";
-    prompt += "  - window_focus(name: string)\n";
-    prompt += "  - window_close(name: string)\n\n";
+    prompt += "  - window_focus(name?: string, id?: string)  # prefer id if provided\n";
+    prompt += "  - window_close(name?: string, id?: string)  # prefer id if provided\n";
+    prompt += "  - window_inspect(name?: string)             # list windows, optionally highlight best match\n\n";
 
     prompt += "Examples of valid output:\n";
     prompt += R"({"name": "open_url", "args": {"url": "https://youtube.com"}, "raw_text": "open youtube"})";
