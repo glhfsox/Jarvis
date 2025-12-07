@@ -25,20 +25,54 @@ def is_exit_phrase(text: str) -> bool:
     return any(word in lower for word in EXIT_KEYWORDS) or lower.strip() == "q"
 
 
+def _local_ack(text: str) -> str | None:
+    t = text.lower()
+
+    if "unmute" in t or "turn on sound" in t:
+        return "Unmuted system audio."
+    if "mute" in t and any(k in t for k in ["sound", "audio", "volume"]):
+        return "Muted system audio."
+
+    if any(k in t for k in ["volume up", "turn up", "louder"]):
+        return "Volume increased."
+    if any(k in t for k in ["volume down", "turn down", "quieter", "softer"]):
+        return "Volume decreased."
+
+    if any(k in t for k in ["brightness up", "brighter"]):
+        return "Brightness increased."
+    if any(k in t for k in ["brightness down", "dim", "dimmer"]):
+        return "Brightness decreased."
+
+    if "wifi off" in t or "turn off wifi" in t:
+        return "Wi-Fi turned off."
+    if "wifi on" in t or "turn on wifi" in t:
+        return "Wi-Fi turned on."
+
+    if "bluetooth off" in t or "turn off bluetooth" in t:
+        return "Bluetooth turned off."
+    if "bluetooth on" in t or "turn on bluetooth" in t:
+        return "Bluetooth turned on."
+
+    return None
+
+
 def _process_user_text(
     history: List[ChatCompletionMessageParam],
     cpp: CppAssistant,
     user_text: str,
 ) -> bool:
-    """
-    Returns True if the app should exit.
-    """
     if is_exit_phrase(user_text):
         stop_speaking()
         speak("Goodbye.", streaming=True)
         return True
 
     cpp.send_chunk(user_text)
+
+    ack = _local_ack(user_text)
+    if ack:
+        print(f"AI: {ack}")
+        speak(ack, streaming=True)
+        return False
 
     reply = handle_user_text(history, user_text)
     print(f"AI: {reply}")
@@ -59,7 +93,7 @@ def main() -> None:
     print("  - Type a message and press ENTER to send text directly.")
     print("  - Press ENTER on an empty line to record a quick voice command.")
     if settings.use_wake_word:
-        print("  - Wake word enabled: say 'Jarvis' (Porcupine) and speak.")
+        print("  - Wake word enabled: say 'Jarvis' and speak.")
     print("  - Say or type: exit / quit / стоп / выход (etc.) to quit.")
     print()
 
