@@ -159,14 +159,17 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "  - window_inspect(name?: string)             # list windows, optionally highlight best match\n\n";
 
     prompt += "Examples of valid output:\n";
+    prompt += "- Single command:\n";
     prompt += R"({"name": "open_url", "args": {"url": "https://youtube.com"}, "raw_text": "open youtube"})";
     prompt += "\n";
+    prompt += "- Multiple commands in one phrase, returned as an array:\n";
     prompt += R"([{"name": "open_url", "args": {"url": "https://youtube.com"}, "raw_text": "open youtube"},)"
-              R"({"name": "open_url", "args": {"url": "https://chatgpt.com"}, "raw_text": "and chatgpt"}])";
+              R"({"name": "open_app", "args": {"name": "code"}, "raw_text": "and open vs code"}])";
     prompt += "\n\n";
 
     prompt += "Rules:\n";
     prompt += "- ALWAYS return valid JSON only (null, object, or array).\n";
+    prompt += "- If the user asks for several actions in one phrase (\"open youtube and vs code\"), split them into multiple command objects in an array.\n";
     prompt += "- Do NOT invent URLs; use only those explicitly mentioned.\n";
     prompt += "- Convert phrases like 'youtube dot com' -> 'youtube.com'.\n";
     prompt += "- Preserve the original user phrase in raw_text.\n\n";
@@ -251,7 +254,35 @@ std::vector<Command> Assistant::parseCommandsWithLLM(const std::string& transcri
         std::string trimmed = trim_copy(content);
         if (trimmed == "null") return result;
 
-        json parsed = json::parse(trimmed);
+        json parsed;
+        try {
+            // Preferred path: model returns exactly one valid JSON value
+            parsed = json::parse(trimmed);
+        } catch (const std::exception&) {
+            // Fallback: some models occasionally emit multiple JSON objects
+            // separated by newlines. Try to parse each non-empty line as a JSON
+            // object and treat the collection as an array.
+            std::vector<json> items;
+            std::istringstream iss(trimmed);
+            std::string line;
+            while (std::getline(iss, line)) {
+                std::string l = trim_copy(line);
+                if (l.empty()) continue;
+                try {
+                    json obj = json::parse(l);
+                    if (obj.is_object()) {
+                        items.push_back(std::move(obj));
+                    }
+                } catch (...) {
+                    // ignore that line, we'll handle lack of items below
+                }
+            }
+            if (!items.empty()) {
+                parsed = items;
+            } else {
+                throw; // rethrow original parse error
+            }
+        }
 
         auto push_from_json = [&](const json& cmdJson) {
             Command cmd;
@@ -329,9 +360,19 @@ void Assistant::detectAndRun() {
         (lower.find("spotify") != std::string::npos &&
          lower.find("dot com") != std::string::npos);
 
+    bool looks_multi_command =
+        (lower.find(" and ") != std::string::npos) ||
+        (lower.find(" и ") != std::string::npos) ||
+        (lower.find(',') != std::string::npos);
+
     std::string quickIntent = detector_.detectIntent(tail);
     if (wants_spotify_url && quickIntent == "open_spotify") {
         quickIntent.clear(); // let LLM treat it as URL
+    }
+    if (looks_multi_command) {
+        // For phrases that likely contain several actions, always delegate
+        // parsing to the LLM so it can emit multiple commands.
+        quickIntent.clear();
     }
 
     std::vector<Command> cmds;
