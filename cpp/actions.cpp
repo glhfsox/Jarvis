@@ -96,14 +96,23 @@ static void system_volume(const std::string& wpctlCmd,
     if (run_if_available("wpctl", wpctlCmd)) return;
     if (run_if_available("pactl", pactlCmd)) return;
     if (run_if_available("amixer", amixerCmd)) return;
-    std::cerr << "Jarvis: no volume control tools found (wpctl/pactl/amixer)\n";
+    std::cerr
+        << "Jarvis: no volume control tools found (wpctl/pactl/amixer)\n"
+        << "Jarvis: On Ubuntu, try:\n"
+        << "  sudo apt install pulseaudio-utils   # for pactl\n"
+        << "  sudo apt install alsa-utils         # for amixer\n";
 }
 
 static void adjust_brightness(const std::string& delta) {
     if (run_if_available("brightnessctl", "brightnessctl set " + delta)) return;
     if (delta == "+5%" && run_if_available("xbacklight", "xbacklight -inc 5")) return;
     if (delta == "5%-" && run_if_available("xbacklight", "xbacklight -dec 5")) return;
-    std::cerr << "Jarvis: no brightness control tools found (brightnessctl/xbacklight)\n";
+    std::cerr
+        << "Jarvis: no brightness control tools found (brightnessctl/xbacklight)\n"
+        << "Jarvis: On Ubuntu, install one of:\n"
+        << "  sudo apt install brightnessctl\n"
+        << "  sudo apt install xbacklight\n"
+        << "Jarvis: If brightnessctl says 'Permission denied', add your user to the 'video' group\n";
 }
 
 static bool terminal_ok(const std::string& term) {
@@ -125,10 +134,8 @@ static std::string find_terminal() {
         std::cerr << "Jarvis: JARVIS_TERMINAL='" << t << "' is not usable; falling back to auto-detect\n";
     }
 
-    // Prefer gnome-terminal if it passes sanity checks.
     if (terminal_ok("gnome-terminal")) return "gnome-terminal";
 
-    // Try a small set of common terminal emulators.
     const char* candidates[] = {
         "x-terminal-emulator",
         "konsole",
@@ -197,7 +204,10 @@ static std::vector<WindowInfo> list_windows() {
     std::vector<WindowInfo> res;
     FILE* pipe = popen("wmctrl -l", "r");
     if (!pipe) {
-        std::cerr << "Jarvis: wmctrl not available\n";
+        std::cerr
+            << "Jarvis: wmctrl not available\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install wmctrl\n";
         return res;
     }
 
@@ -242,6 +252,14 @@ static int open_url_system(const std::string& rawUrl) {
     std::string lower = toLowerCopy(url);
     if (lower.rfind("http://", 0) != 0 && lower.rfind("https://", 0) != 0) {
         url = "https://" + url;
+    }
+
+    if (!have_cmd("firefox")) {
+        std::cerr
+            << "Jarvis: firefox browser not found\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install firefox\n";
+        return -1;
     }
 
     return run_cmd("firefox '" + url + "' &");
@@ -324,6 +342,13 @@ static void handleOpenVSCodeQuick(const Command& cmd)    { wrapOpenApp(cmd, "cod
 // playerctl
 
 static void handleMediaSimple(const std::string& subcmd) {
+    if (!have_cmd("playerctl")) {
+        std::cerr
+            << "Jarvis: playerctl not found (media controls disabled)\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install playerctl\n";
+        return;
+    }
     run_cmd("playerctl " + subcmd);
 }
 
@@ -383,11 +408,47 @@ static void handleSystemVolUnmute(const Command&) {
 static void handleSystemBrightnessUp(const Command&)   { adjust_brightness("+5%"); }
 static void handleSystemBrightnessDown(const Command&) { adjust_brightness("5%-"); }
 
-static void handleWifiOn(const Command&)  { run_cmd("nmcli radio wifi on"); }
-static void handleWifiOff(const Command&) { run_cmd("nmcli radio wifi off"); }
+static void handleWifiOn(const Command&)  {
+    if (!have_cmd("nmcli")) {
+        std::cerr
+            << "Jarvis: nmcli (NetworkManager CLI) not found\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install network-manager\n";
+        return;
+    }
+    run_cmd("nmcli radio wifi on");
+}
+static void handleWifiOff(const Command&) {
+    if (!have_cmd("nmcli")) {
+        std::cerr
+            << "Jarvis: nmcli (NetworkManager CLI) not found\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install network-manager\n";
+        return;
+    }
+    run_cmd("nmcli radio wifi off");
+}
 
-static void handleBluetoothOn(const Command&)  { run_cmd("bluetoothctl power on"); }
-static void handleBluetoothOff(const Command&) { run_cmd("bluetoothctl power off"); }
+static void handleBluetoothOn(const Command&)  {
+    if (!have_cmd("bluetoothctl")) {
+        std::cerr
+            << "Jarvis: bluetoothctl not found\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install bluez\n";
+        return;
+    }
+    run_cmd("bluetoothctl power on");
+}
+static void handleBluetoothOff(const Command&) {
+    if (!have_cmd("bluetoothctl")) {
+        std::cerr
+            << "Jarvis: bluetoothctl not found\n"
+            << "Jarvis: On Ubuntu, install it with:\n"
+            << "  sudo apt install bluez\n";
+        return;
+    }
+    run_cmd("bluetoothctl power off");
+}
 
 static void handleSystemLock(const Command&) {
     run_cmd("loginctl lock-session");
