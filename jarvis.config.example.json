@@ -1,0 +1,19 @@
+{
+  "use_wake_word": false,
+  "default_browser": "firefox",
+  "default_terminal": "gnome-terminal",
+  "volume_step_percent": 5,
+  "brightness_step_percent": 5,
+  "app_commands": {
+    "browser": "firefox",
+    "firefox": "firefox",
+    "chrome": "google-chrome",
+    "chromium": "chromium",
+    "telegram": "telegram-desktop",
+    "spotify": "spotify",
+    "code": "code",
+    "vscode": "code",
+    "steam": "steam",
+    "terminal": "gnome-terminal"
+  }
+}
