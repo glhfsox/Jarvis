@@ -8,9 +8,11 @@
 #include <vector>
 #include <array>
 #include <cstdint>
+#include <fstream>
 #include <limits.h>
 #include <unistd.h>
 #include <signal.h>
+#include <nlohmann/json.hpp>
 
 struct ContextMemory {
     std::string last_app;
@@ -24,7 +26,49 @@ struct ContextMemory {
 
 static ContextMemory g_ctx;
 
+struct RuntimeConfig {
+    std::string default_browser = "firefox";
+    std::string default_terminal = "gnome-terminal";
+    int volume_step = 5;
+    int brightness_step = 5;
+};
+
+static RuntimeConfig load_config() {
+    RuntimeConfig cfg;
+    const char* envPath = std::getenv("JARVIS_CONFIG");
+    std::string path = envPath ? envPath : "jarvis.config.json";
+    std::ifstream f(path);
+    if (!f.is_open()) {
+        return cfg;
+    }
+
+    try {
+        nlohmann::json j;
+        f >> j;
+        if (j.contains("default_browser") && j["default_browser"].is_string()) {
+            cfg.default_browser = j["default_browser"].get<std::string>();
+        }
+        if (j.contains("default_terminal") && j["default_terminal"].is_string()) {
+            cfg.default_terminal = j["default_terminal"].get<std::string>();
+        }
+        if (j.contains("volume_step_percent") && j["volume_step_percent"].is_number_integer()) {
+            cfg.volume_step = j["volume_step_percent"].get<int>();
+        }
+        if (j.contains("brightness_step_percent") && j["brightness_step_percent"].is_number_integer()) {
+            cfg.brightness_step = j["brightness_step_percent"].get<int>();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Jarvis: failed to load config '" << path << "': " << e.what() << "\n";
+    }
+    return cfg;
+}
+
+static RuntimeConfig g_cfg = load_config();
+
 //Helpers
+
+std::string toLowerCopy(const std::string& s); // from assistant.cpp
+static std::string find_window_id_by_title(const std::string& query);
 
 static int run_cmd(const std::string& cmd) {
     std::cout << "Jarvis: run `" << cmd << "`\n";
@@ -60,8 +104,6 @@ static void remember_last_window(const std::string& wid) {
     g_ctx.seq_counter++;
     g_ctx.last_window_seq = g_ctx.seq_counter;
 }
-
-static std::string find_window_id_by_title(const std::string& query);
 
 static std::string app_to_window_query(const std::string& app) {
     std::string lower = toLowerCopy(app);
@@ -105,9 +147,6 @@ static std::string cmd_path(const std::string& bin) {
     pclose(pipe);
     return path;
 }
-
-std::string toLowerCopy(const std::string& s); // from assistant.cpp
-static std::string find_window_id_by_title(const std::string& query);
 
 static std::string shell_quote(const std::string& s) {
     std::string out = "'";
@@ -160,6 +199,16 @@ static bool run_if_available(const std::string& bin, const std::string& cmd) {
     return true;
 }
 
+static std::string volume_delta(bool up) {
+    int step = (g_cfg.volume_step > 0) ? g_cfg.volume_step : 5;
+    return std::to_string(step) + "%"+ (up ? "+" : "-");
+}
+
+static std::string brightness_delta(bool up) {
+    int step = (g_cfg.brightness_step > 0) ? g_cfg.brightness_step : 5;
+    return up ? ("+" + std::to_string(step) + "%") : (std::to_string(step) + "%-");
+}
+
 static void system_volume(const std::string& wpctlCmd,
                           const std::string& pactlCmd,
                           const std::string& amixerCmd) {
@@ -204,6 +253,11 @@ static std::string find_terminal() {
         std::cerr << "Jarvis: JARVIS_TERMINAL='" << t << "' is not usable; falling back to auto-detect\n";
     }
 
+    if (!g_cfg.default_terminal.empty()) {
+        if (terminal_ok(g_cfg.default_terminal)) return g_cfg.default_terminal;
+        std::cerr << "Jarvis: default_terminal='" << g_cfg.default_terminal << "' is not usable; falling back to auto-detect\n";
+    }
+
     if (terminal_ok("gnome-terminal")) return "gnome-terminal";
 
     const char* candidates[] = {
@@ -241,7 +295,7 @@ static int launch_terminal(const std::string& optionalCmd = {}) {
 
     std::string term = find_terminal();
     if (term.empty()) {
-        std::cerr << "Jarvis: no terminal emulator found (set JARVIS_TERMINAL env)\n";
+        std::cerr << "Jarvis: no terminal emulator found (set JARVIS_TERMINAL env or default_terminal in jarvis.config.json)\n";
         return -1;
     }
 
@@ -366,16 +420,19 @@ static int open_url_system(const std::string& rawUrl) {
         url = "https://" + url;
     }
 
-    if (!have_cmd("firefox")) {
-        std::cerr
-            << "Jarvis: firefox browser not found\n"
-            << "Jarvis: On Ubuntu, install it with:\n"
-            << "  sudo apt install firefox\n";
-        return -1;
+    std::string browser = g_cfg.default_browser.empty() ? "firefox" : g_cfg.default_browser;
+    if (!have_cmd(browser)) {
+        if (browser != "firefox" && have_cmd("firefox")) {
+            browser = "firefox";
+        } else {
+            std::cerr
+                << "Jarvis: browser '" << browser << "' not found (set default_browser in jarvis.config.json)\n";
+            return -1;
+        }
     }
 
     g_ctx.last_url = url;
-    return run_cmd("firefox '" + url + "' &");
+    return run_cmd(browser + " '" + url + "' &");
 }
 
 
@@ -539,16 +596,16 @@ static void handleMediaUnmute(const Command&)     {
 
 static void handleSystemVolUp(const Command&)   {
     system_volume(
-        "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+",
-        "pactl set-sink-volume @DEFAULT_SINK@ +5%",
-        "amixer -q -D pulse sset Master 5%+"
+        "wpctl set-volume @DEFAULT_AUDIO_SINK@ " + volume_delta(true),
+        "pactl set-sink-volume @DEFAULT_SINK@ +" + std::to_string((g_cfg.volume_step > 0) ? g_cfg.volume_step : 5) + "%",
+        "amixer -q -D pulse sset Master " + std::to_string((g_cfg.volume_step > 0) ? g_cfg.volume_step : 5) + "%+"
     );
 }
 static void handleSystemVolDown(const Command&) {
     system_volume(
-        "wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-",
-        "pactl set-sink-volume @DEFAULT_SINK@ -5%",
-        "amixer -q -D pulse sset Master 5%-"
+        "wpctl set-volume @DEFAULT_AUDIO_SINK@ " + volume_delta(false),
+        "pactl set-sink-volume @DEFAULT_SINK@ -" + std::to_string((g_cfg.volume_step > 0) ? g_cfg.volume_step : 5) + "%",
+        "amixer -q -D pulse sset Master " + std::to_string((g_cfg.volume_step > 0) ? g_cfg.volume_step : 5) + "%-"
     );
 }
 static void handleSystemVolMute(const Command&) {
@@ -566,8 +623,8 @@ static void handleSystemVolUnmute(const Command&) {
     );
 }
 
-static void handleSystemBrightnessUp(const Command&)   { adjust_brightness("+5%"); }
-static void handleSystemBrightnessDown(const Command&) { adjust_brightness("5%-"); }
+static void handleSystemBrightnessUp(const Command&)   { adjust_brightness(brightness_delta(true)); }
+static void handleSystemBrightnessDown(const Command&) { adjust_brightness(brightness_delta(false)); }
 
 static void handleWifiOn(const Command&)  {
     if (!have_cmd("nmcli")) {
