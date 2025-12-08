@@ -9,6 +9,16 @@
 #include <array>
 #include <limits.h>
 #include <unistd.h>
+#include <signal.h>
+
+struct ContextMemory {
+    std::string last_app;
+    std::string last_url;
+    std::string last_window_id;
+    pid_t last_app_pid = -1;
+};
+
+static ContextMemory g_ctx;
 
 //Helpers
 
@@ -16,6 +26,24 @@ static int run_cmd(const std::string& cmd) {
     std::cout << "Jarvis: run `" << cmd << "`\n";
     return std::system(cmd.c_str());
 }
+
+static pid_t spawn_and_get_pid(const std::string& cmd) {
+    // start the command in background and echo its pid
+    std::string shCmd = cmd + " & echo $!";
+    FILE* pipe = popen(shCmd.c_str(), "r");
+    if (!pipe) return -1;
+
+    char buf[64];
+    if (!fgets(buf, sizeof(buf), pipe)) {
+        pclose(pipe);
+        return -1;
+    }
+    pclose(pipe);
+    long pid = std::strtol(buf, nullptr, 10);
+    if (pid <= 0) return -1;
+    return static_cast<pid_t>(pid);
+}
+
 
 static bool have_cmd(const std::string& bin) {
     std::string probe = "command -v " + bin + " >/dev/null 2>&1";
@@ -179,6 +207,8 @@ static int launch_terminal(const std::string& optionalCmd = {}) {
         std::string cmd = build_cmd(t);
         int rc = std::system(cmd.c_str());
         if (rc == 0) {
+            g_ctx.last_app = t;
+            g_ctx.last_app_pid =-1;
             std::cout << "Jarvis: run `" << cmd << "`\n";
             return true;
         }
@@ -273,6 +303,7 @@ static void handleWindowInspect(const Command& cmd) {
             }
         }
         if (!bestId.empty()) {
+            g_ctx.last_window_id=bestId;
             std::cout << "Jarvis: best match for '" << query << "': id=" << bestId
                       << " | " << bestTitle << "\n";
         } else {
@@ -288,7 +319,7 @@ static int open_url_system(const std::string& rawUrl) {
     // small convenience: "gmail" -> Gmail web
     if (url == "gmail") url = "https://mail.google.com";
 
-    std::string lower = toLowerCopy(url);
+        std::string lower = toLowerCopy(url);
     if (lower.rfind("http://", 0) != 0 && lower.rfind("https://", 0) != 0) {
         url = "https://" + url;
     }
@@ -301,18 +332,63 @@ static int open_url_system(const std::string& rawUrl) {
         return -1;
     }
 
+    g_ctx.last_url = url;
     return run_cmd("firefox '" + url + "' &");
 }
 
+
 static int launch_app(const std::string& appExec) {
     if (appExec.empty()) return -1;
-    return run_cmd(appExec);
+
+    std::cout << "Jarvis: run `" << appExec << "`\n";
+    pid_t pid = spawn_and_get_pid(appExec);
+    if (pid > 0) {
+        g_ctx.last_app = appExec;
+        g_ctx.last_app_pid = pid;
+        return 0;
+    }
+
+    // fallback if we couldn't get a pid
+    int rc = std::system(appExec.c_str());
+    if (rc == 0) {
+        g_ctx.last_app = appExec;
+        g_ctx.last_app_pid = -1;
+    }
+    return rc;
+}
+
+
+
+static int close_last_app_instance() {
+    if (g_ctx.last_app.empty()) return -1;
+    if (g_ctx.last_app_pid > 0) {
+        int rc = ::kill(g_ctx.last_app_pid, SIGTERM);
+        if (rc == 0) {
+            ::kill(g_ctx.last_app_pid, SIGKILL);
+            return 0;
+        }
+    }
+    std::string cmd = "pkill -n -f '" + g_ctx.last_app + "'";
+    int rc = std::system(cmd.c_str());
+    if (rc == 0) {
+        return 0;
+    }
+
+    std::cerr << "Jarvis: no last window or app instance remembered for '"
+              << g_ctx.last_app << "'\n";
+    return -1;
 }
 
 static int close_app_system(const std::string& appExec) {
     if (appExec.empty()) return -1;
-    return run_cmd("pkill -f '" + appExec + "'");
+    std::string cmd =
+        "pkill -x '" + appExec + "' || "
+        "pkill -f '" + appExec + "'";
+    return std::system(cmd.c_str());
 }
+
+
+
 
 // basic open_url / open_app / close_app
 
@@ -506,6 +582,7 @@ static void handleSystemReboot(const Command&) {
 static void handleWindowFocus(const Command& cmd) {
     auto itId = cmd.args.find("id");
     if (itId != cmd.args.end() && !itId->second.empty()) {
+        g_ctx.last_window_id = itId->second;
         run_cmd("wmctrl -i -a '" + itId->second + "'");
         return;
     }
@@ -521,12 +598,14 @@ static void handleWindowFocus(const Command& cmd) {
         std::cerr << "Jarvis: window_focus: no window matching '" << title << "'\n";
         return;
     }
+    g_ctx.last_window_id = wid;
     run_cmd("wmctrl -i -a '" + wid + "'");
 }
 
 static void handleWindowClose(const Command& cmd) {
     auto itId = cmd.args.find("id");
     if (itId != cmd.args.end() && !itId->second.empty()) {
+        g_ctx.last_window_id = itId->second;
         run_cmd("wmctrl -i -c '" + itId->second + "'");
         return;
     }
@@ -542,8 +621,33 @@ static void handleWindowClose(const Command& cmd) {
         std::cerr << "Jarvis: window_close: no window matching '" << title << "'\n";
         return;
     }
+    g_ctx.last_window_id = wid;
     run_cmd("wmctrl -i -c '" + wid + "'");
 }
+
+static void handleWindowFocusLast(const Command&) {
+    if (g_ctx.last_window_id.empty()) {
+        std::cerr << "Jarvis: no last window remembered\n";
+        return;
+    }
+    run_cmd("wmctrl -i -a '" + g_ctx.last_window_id + "'");
+}
+
+static void handleWindowCloseLast(const Command&) {
+    if (!g_ctx.last_window_id.empty()) {
+        run_cmd("wmctrl -i -c '" + g_ctx.last_window_id + "'");
+        return;
+    }
+
+    if (!g_ctx.last_app.empty()) {
+        if (close_last_app_instance() == 0) {
+            return;
+        }
+    }
+
+    std::cerr << "Jarvis: no last window or app instance remembered\n";
+}
+
 
 // registration api
 
@@ -597,4 +701,6 @@ void register_window_actions(CommandDispatcher& disp) {
     disp.registerHandler("window_focus",   handleWindowFocus);
     disp.registerHandler("window_close",   handleWindowClose);
     disp.registerHandler("window_inspect", handleWindowInspect);
+    disp.registerHandler("window_focus_last",  handleWindowFocusLast);
+    disp.registerHandler("window_close_last",  handleWindowCloseLast);
 }

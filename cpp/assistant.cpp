@@ -1,18 +1,15 @@
 #include "assistant.hpp"
 #include "actions.hpp"
-
 #include <cctype>
 #include <cstdlib>
 #include <iostream>
 #include <signal.h>
-
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
-
 using json = nlohmann::json;
 using namespace std::chrono_literals;
 
-// ---------- CommandDispatcher ----------
+// CommandDispatcher 
 
 void CommandDispatcher::registerHandler(const std::string& name, Handler handler) {
     handlers_[name] = std::move(handler);
@@ -27,7 +24,7 @@ void CommandDispatcher::dispatch(const Command& cmd) const {
     it->second(cmd);
 }
 
-// ---------- TextBuffer ----------
+// TextBuffer 
 
 TextBuffer::TextBuffer(std::size_t maxChars)
     : maxChars_(maxChars) {}
@@ -53,7 +50,7 @@ void TextBuffer::clear() {
     buffer_.clear();
 }
 
-// ---------- KeywordDetector ----------
+//KeywordDetector
 
 KeywordDetector::KeywordDetector(Map patterns)
     : patterns_(std::move(patterns)) {}
@@ -80,7 +77,7 @@ bool KeywordDetector::contains(const std::string& text, const std::string& patte
     return text.find(pattern) != std::string::npos;
 }
 
-// ---------- Utils ----------
+//Utils
 
 std::string toLowerCopy(const std::string& s) {
     std::string res;
@@ -96,7 +93,7 @@ static std::string trim_copy(std::string s) {
     return s;
 }
 
-// ---------- LLM integration ----------
+// LLM integration
 
 struct CurlBuffer {
     std::string data;
@@ -157,6 +154,9 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "  - window_focus(name?: string, id?: string)  # prefer id if provided\n";
     prompt += "  - window_close(name?: string, id?: string)  # prefer id if provided\n";
     prompt += "  - window_inspect(name?: string)             # list windows, optionally highlight best match\n\n";
+    prompt += "  - window_focus_last()\n";
+    prompt += "  - window_close_last()\n";
+
 
     prompt += "Examples of valid output:\n";
     prompt += "- Single command:\n";
@@ -173,6 +173,7 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "- Do NOT invent URLs; use only those explicitly mentioned.\n";
     prompt += "- Convert phrases like 'youtube dot com' -> 'youtube.com'.\n";
     prompt += "- Preserve the original user phrase in raw_text.\n\n";
+    prompt += "- For phrases like 'close it' / 'закрой его' that refer to the most recently focused window, use window_close_last().\n";
 
     prompt += "Here is the transcript:\n\"\"\"" + transcript + "\"\"\"";
 
@@ -256,12 +257,12 @@ std::vector<Command> Assistant::parseCommandsWithLLM(const std::string& transcri
 
         json parsed;
         try {
-            // Preferred path: model returns exactly one valid JSON value
+            // preferred path: model returns exactly one valid json value
             parsed = json::parse(trimmed);
         } catch (const std::exception&) {
-            // Fallback: some models occasionally emit multiple JSON objects
-            // separated by newlines. Try to parse each non-empty line as a JSON
-            // object and treat the collection as an array.
+            // some models occasionally emit multiple json objects
+            // separated by newlines. trying to parse each non-empty line as a json
+            // object and treat the collection as an array
             std::vector<json> items;
             std::istringstream iss(trimmed);
             std::string line;
@@ -316,7 +317,7 @@ std::vector<Command> Assistant::parseCommandsWithLLM(const std::string& transcri
     return result;
 }
 
-// ---------- Assistant ----------
+//Assistant
 
 Assistant::Assistant(KeywordDetector detector,
                      CommandDispatcher& dispatcher,
@@ -370,8 +371,8 @@ void Assistant::detectAndRun() {
         quickIntent.clear(); // let LLM treat it as URL
     }
     if (looks_multi_command) {
-        // For phrases that likely contain several actions, always delegate
-        // parsing to the LLM so it can emit multiple commands.
+        // for phrases that likely contain several actions, always delegate
+        // parsing to the LLM so it can emit multiple commands
         quickIntent.clear();
     }
 
@@ -398,7 +399,6 @@ void Assistant::detectAndRun() {
     buffer_.clear();
 }
 
-// ---------- main() ----------
 
 static std::atomic<bool> gStop(false);
 
