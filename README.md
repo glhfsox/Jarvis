@@ -36,6 +36,24 @@ Jarvis is configured via environment variables (see `config.py`):
 
 You can also adjust default models, recording duration, default city and app command mappings in `config.py`.
 
+Optional config file `jarvis.config.json` (loaded by both Python and the C++ assistant):
+
+- `default_browser` / `default_terminal`
+- `volume_step_percent` / `brightness_step_percent`
+- `use_wake_word`
+- `app_commands` mapping (e.g., `"chrome": "google-chrome"`)
+
+Example:
+```json
+{
+  "default_browser": "firefox",
+  "default_terminal": "gnome-terminal",
+  "volume_step_percent": 5,
+  "brightness_step_percent": 5,
+  "use_wake_word": false
+}
+```
+
 ## Running
 
 From the project root:
