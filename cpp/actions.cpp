@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <cstdint>
 #include <limits.h>
 #include <unistd.h>
 #include <signal.h>
@@ -16,6 +17,9 @@ struct ContextMemory {
     std::string last_url;
     std::string last_window_id;
     pid_t last_app_pid = -1;
+    uint64_t seq_counter = 0;
+    uint64_t last_app_seq = 0;
+    uint64_t last_window_seq = 0;
 };
 
 static ContextMemory g_ctx;
@@ -44,6 +48,43 @@ static pid_t spawn_and_get_pid(const std::string& cmd) {
     return static_cast<pid_t>(pid);
 }
 
+static void remember_last_app(const std::string& app, pid_t pid) {
+    g_ctx.last_app = app;
+    g_ctx.last_app_pid = pid;
+    g_ctx.seq_counter++;
+    g_ctx.last_app_seq = g_ctx.seq_counter;
+}
+
+static void remember_last_window(const std::string& wid) {
+    g_ctx.last_window_id = wid;
+    g_ctx.seq_counter++;
+    g_ctx.last_window_seq = g_ctx.seq_counter;
+}
+
+static std::string find_window_id_by_title(const std::string& query);
+
+static std::string app_to_window_query(const std::string& app) {
+    std::string lower = toLowerCopy(app);
+    if (lower == "google-chrome" || lower == "chrome") return "chrome";
+    if (lower == "telegram-desktop" || lower == "telegram") return "telegram";
+    if (lower == "code" || lower == "vscode" || lower.find("visual") != std::string::npos) return "visual studio code";
+    if (lower.find("firefox") != std::string::npos) return "firefox";
+    if (lower.find("discord") != std::string::npos) return "discord";
+    if (lower.find("spotify") != std::string::npos) return "spotify";
+    if (lower.find("steam") != std::string::npos) return "steam";
+    if (lower.find("konsole") != std::string::npos) return "konsole";
+    if (lower.find("terminal") != std::string::npos) return "terminal";
+    return app;
+}
+
+static bool close_window_by_title(const std::string& title) {
+    if (title.empty()) return false;
+    std::string wid = find_window_id_by_title(title);
+    if (wid.empty()) return false;
+    remember_last_window(wid);
+    return run_cmd("wmctrl -i -c '" + wid + "'") == 0;
+}
+
 
 static bool have_cmd(const std::string& bin) {
     std::string probe = "command -v " + bin + " >/dev/null 2>&1";
@@ -66,6 +107,7 @@ static std::string cmd_path(const std::string& bin) {
 }
 
 std::string toLowerCopy(const std::string& s); // from assistant.cpp
+static std::string find_window_id_by_title(const std::string& query);
 
 static std::string shell_quote(const std::string& s) {
     std::string out = "'";
@@ -207,8 +249,7 @@ static int launch_terminal(const std::string& optionalCmd = {}) {
         std::string cmd = build_cmd(t);
         int rc = std::system(cmd.c_str());
         if (rc == 0) {
-            g_ctx.last_app = t;
-            g_ctx.last_app_pid =-1;
+            remember_last_app(t, -1);
             std::cout << "Jarvis: run `" << cmd << "`\n";
             return true;
         }
@@ -263,13 +304,14 @@ static std::vector<WindowInfo> list_windows() {
 
 static std::string find_window_id_by_title(const std::string& query) {
     std::string qLower = toLowerCopy(query);
+    std::string best;
     for (const auto& w : list_windows()) {
         std::string tLower = toLowerCopy(w.title);
         if (tLower.find(qLower) != std::string::npos) {
-            return w.id;
+            best = w.id;
         }
     }
-    return {};
+    return best;
 }
 
 static void handleWindowInspect(const Command& cmd) {
@@ -303,7 +345,7 @@ static void handleWindowInspect(const Command& cmd) {
             }
         }
         if (!bestId.empty()) {
-            g_ctx.last_window_id=bestId;
+            remember_last_window(bestId);
             std::cout << "Jarvis: best match for '" << query << "': id=" << bestId
                       << " | " << bestTitle << "\n";
         } else {
@@ -343,16 +385,14 @@ static int launch_app(const std::string& appExec) {
     std::cout << "Jarvis: run `" << appExec << "`\n";
     pid_t pid = spawn_and_get_pid(appExec);
     if (pid > 0) {
-        g_ctx.last_app = appExec;
-        g_ctx.last_app_pid = pid;
+        remember_last_app(appExec, pid);
         return 0;
     }
 
     // fallback if we couldn't get a pid
     int rc = std::system(appExec.c_str());
     if (rc == 0) {
-        g_ctx.last_app = appExec;
-        g_ctx.last_app_pid = -1;
+        remember_last_app(appExec, -1);
     }
     return rc;
 }
@@ -361,21 +401,27 @@ static int launch_app(const std::string& appExec) {
 
 static int close_last_app_instance() {
     if (g_ctx.last_app.empty()) return -1;
+
+    // prefer closing a single window matching the app title before killing processes
+    if (close_window_by_title(app_to_window_query(g_ctx.last_app))) return 0;
+
     if (g_ctx.last_app_pid > 0) {
-        int rc = ::kill(g_ctx.last_app_pid, SIGTERM);
-        if (rc == 0) {
+        if (::kill(g_ctx.last_app_pid, SIGTERM) == 0) {
             ::kill(g_ctx.last_app_pid, SIGKILL);
             return 0;
         }
     }
-    std::string cmd = "pkill -n -f '" + g_ctx.last_app + "'";
-    int rc = std::system(cmd.c_str());
-    if (rc == 0) {
-        return 0;
+
+    if (g_ctx.last_app == "konsole") {
+        return run_cmd("pkill -n konsole");
     }
 
-    std::cerr << "Jarvis: no last window or app instance remembered for '"
-              << g_ctx.last_app << "'\n";
+    std::string cmdExact = "pkill -n -x '" + g_ctx.last_app + "'";
+    if (std::system(cmdExact.c_str()) == 0) return 0;
+
+    std::string cmd = "pkill -n -f '" + g_ctx.last_app + "'";
+    if (std::system(cmd.c_str()) == 0) return 0;
+
     return -1;
 }
 
@@ -582,7 +628,7 @@ static void handleSystemReboot(const Command&) {
 static void handleWindowFocus(const Command& cmd) {
     auto itId = cmd.args.find("id");
     if (itId != cmd.args.end() && !itId->second.empty()) {
-        g_ctx.last_window_id = itId->second;
+        remember_last_window(itId->second);
         run_cmd("wmctrl -i -a '" + itId->second + "'");
         return;
     }
@@ -598,14 +644,14 @@ static void handleWindowFocus(const Command& cmd) {
         std::cerr << "Jarvis: window_focus: no window matching '" << title << "'\n";
         return;
     }
-    g_ctx.last_window_id = wid;
+    remember_last_window(wid);
     run_cmd("wmctrl -i -a '" + wid + "'");
 }
 
 static void handleWindowClose(const Command& cmd) {
     auto itId = cmd.args.find("id");
     if (itId != cmd.args.end() && !itId->second.empty()) {
-        g_ctx.last_window_id = itId->second;
+        remember_last_window(itId->second);
         run_cmd("wmctrl -i -c '" + itId->second + "'");
         return;
     }
@@ -621,7 +667,7 @@ static void handleWindowClose(const Command& cmd) {
         std::cerr << "Jarvis: window_close: no window matching '" << title << "'\n";
         return;
     }
-    g_ctx.last_window_id = wid;
+    remember_last_window(wid);
     run_cmd("wmctrl -i -c '" + wid + "'");
 }
 
@@ -630,22 +676,50 @@ static void handleWindowFocusLast(const Command&) {
         std::cerr << "Jarvis: no last window remembered\n";
         return;
     }
+    remember_last_window(g_ctx.last_window_id);
     run_cmd("wmctrl -i -a '" + g_ctx.last_window_id + "'");
 }
 
 static void handleWindowCloseLast(const Command&) {
-    if (!g_ctx.last_window_id.empty()) {
-        run_cmd("wmctrl -i -c '" + g_ctx.last_window_id + "'");
+    bool hasWindow = !g_ctx.last_window_id.empty();
+    bool hasApp = !g_ctx.last_app.empty();
+
+    if (!hasWindow && !hasApp) {
+        std::cerr << "Jarvis: no last window or app instance remembered\n";
         return;
     }
 
-    if (!g_ctx.last_app.empty()) {
-        if (close_last_app_instance() == 0) {
-            return;
-        }
+    auto closeWindowById = [&]() -> bool {
+        if (!hasWindow) return false;
+        remember_last_window(g_ctx.last_window_id);
+        return run_cmd("wmctrl -i -c '" + g_ctx.last_window_id + "'") == 0;
+    };
+
+    auto closeWindowByTitle = [&]() -> bool {
+        if (!hasApp) return false;
+        return close_window_by_title(app_to_window_query(g_ctx.last_app));
+    };
+
+    bool closed = false;
+
+    bool windowIsNewer = hasWindow && g_ctx.last_window_seq >= g_ctx.last_app_seq;
+
+    if (windowIsNewer) {
+        closed = closeWindowById();
+        if (!closed && hasApp) closed = closeWindowByTitle();
+    } else if (hasApp) {
+        // if the app was the last thing we interacted with, prefer its window match first
+        closed = closeWindowByTitle();
+        if (!closed && hasWindow) closed = closeWindowById();
     }
 
-    std::cerr << "Jarvis: no last window or app instance remembered\n";
+    if (!closed && hasApp) {
+        closed = close_last_app_instance() == 0;
+    }
+
+    if (!closed) {
+        std::cerr << "Jarvis: failed to close last window/app\n";
+    }
 }
 
 

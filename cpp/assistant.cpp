@@ -173,7 +173,9 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "- Do NOT invent URLs; use only those explicitly mentioned.\n";
     prompt += "- Convert phrases like 'youtube dot com' -> 'youtube.com'.\n";
     prompt += "- Preserve the original user phrase in raw_text.\n\n";
-    prompt += "- For phrases like 'close it' / 'закрой его' that refer to the most recently focused window, use window_close_last().\n";
+    prompt += "- Example: if the user says 'open Firefox' then later 'close it', you MUST use window_close_last(), not close_app.\n";
+    prompt += "- Same for terminals and apps: 'close it' / 'закрой его' -> window_close_last().\n";
+
 
     prompt += "Here is the transcript:\n\"\"\"" + transcript + "\"\"\"";
 
