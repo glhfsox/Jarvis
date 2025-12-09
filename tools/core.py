@@ -147,14 +147,12 @@ def summarize_file(path: str, max_bytes: int = 16000, head_lines: int = 20) -> s
     if max_bytes is None or max_bytes <= 0:
         max_bytes = getattr(_settings, "summarize_max_bytes", 16000)
         if max_bytes <= 0:
-            logger.warning("summarize_max_bytes <= 0; therefore was set to 16k . " \
-            "change the parameter in core.py")
+            logger.warning("summarize_max_bytes <= 0; therefore was set to 16k. change the parameter in config.")
             max_bytes = 16000
     if head_lines is None or head_lines <= 0:
         head_lines = getattr(_settings, "summarize_head_lines", 20)
         if head_lines <= 0:
-            logger.warning("summarize_head_lines <= 0; therefore was set to 20 . " \
-            "change the parameter in core.py")
+            logger.warning("summarize_head_lines <= 0; therefore was set to 20. change the parameter in config.")
             head_lines = 20
     p = _resolve_path(path)
     if p.is_dir():
@@ -170,6 +168,43 @@ def summarize_file(path: str, max_bytes: int = 16000, head_lines: int = 20) -> s
     return f"{meta}\n\n{head}"
 
 
+def _search_text(target: Path, query: str, max_matches: int) -> str:
+    matches = []
+
+    def search_file(f: Path):
+        try:
+            if f.stat().st_size > 200_000:
+                return
+        except OSError:
+            return
+        try:
+            with f.open("r", encoding="utf-8", errors="ignore") as fh:
+                for idx, line in enumerate(fh, start=1):
+                    if query in line:
+                        matches.append(f"{f}:{idx}:{line.rstrip()}")
+                        if len(matches) >= max_matches:
+                            return True
+        except (OSError, UnicodeError):
+            return
+        return False
+
+    if target.is_file():
+        search_file(target)
+    else:
+        for f in target.rglob("*"):
+            if len(matches) >= max_matches:
+                break
+            if f.is_file():
+                if search_file(f):
+                    break
+
+    if not matches:
+        return "No matches"
+    if len(matches) > max_matches:
+        matches = matches[:max_matches] + ["... (truncated)"]
+    return "\n".join(matches)
+
+
 def search_text(query: str, path: Optional[str] = None, max_matches: int = 20) -> str:
     target = _resolve_path(path or ".")
     if not query.strip():
@@ -178,12 +213,12 @@ def search_text(query: str, path: Optional[str] = None, max_matches: int = 20) -
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError:
-        return "ripgrep (rg) not found"
+        return _search_text(target, query, max_matches)
     if proc.returncode not in (0, 1):
         return f"rg error: {proc.stderr.strip()}"
     lines = proc.stdout.strip().splitlines()
     if not lines:
-        return "No matches"
+        return _search_text(target, query, max_matches)
     if len(lines) > max_matches:
         lines = lines[:max_matches] + ["... (truncated)"]
     return "\n".join(lines)
