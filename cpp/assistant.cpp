@@ -165,6 +165,12 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "- Multiple commands in one phrase, returned as an array:\n";
     prompt += R"([{"name": "open_url", "args": {"url": "https://youtube.com"}, "raw_text": "open youtube"},)"
               R"({"name": "open_app", "args": {"name": "code"}, "raw_text": "and open vs code"}])";
+    prompt += "\n";
+    prompt += "- Pronoun-based close:\n";
+    prompt += R"({"name": "window_close_last", "args": {}, "raw_text": "close it"})";
+    prompt += "\n";
+    prompt += "- Pronoun-based close in Russian:\n";
+    prompt += R"({"name": "window_close_last", "args": {}, "raw_text": "закрой его"})";
     prompt += "\n\n";
 
     prompt += "Rules:\n";
@@ -174,7 +180,7 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "- Convert phrases like 'youtube dot com' -> 'youtube.com'.\n";
     prompt += "- Preserve the original user phrase in raw_text.\n\n";
     prompt += "- Example: if the user says 'open Firefox' then later 'close it', you MUST use window_close_last(), not close_app.\n";
-    prompt += "- Same for terminals and apps: 'close it' / 'закрой его' -> window_close_last().\n";
+    prompt += "- Same for terminals and apps: 'close it' / 'закрой его' / 'закрой это' -> window_close_last().\n";
 
 
     prompt += "Here is the transcript:\n\"\"\"" + transcript + "\"\"\"";
@@ -363,12 +369,20 @@ void Assistant::detectAndRun() {
         (lower.find("spotify") != std::string::npos &&
          lower.find("dot com") != std::string::npos);
 
+    bool looks_close_it =
+        (lower.find("close it") != std::string::npos) ||
+        (lower.find("закрой его") != std::string::npos) ||
+        (lower.find("закрой это") != std::string::npos);
+
     bool looks_multi_command =
         (lower.find(" and ") != std::string::npos) ||
         (lower.find(" и ") != std::string::npos) ||
         (lower.find(',') != std::string::npos);
 
     std::string quickIntent = detector_.detectIntent(tail);
+    if (looks_close_it) {
+        quickIntent = "window_close_last";
+    }
     if (wants_spotify_url && quickIntent == "open_spotify") {
         quickIntent.clear(); // let LLM treat it as URL
     }
