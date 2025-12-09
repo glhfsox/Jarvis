@@ -54,6 +54,11 @@ Example:
 }
 ```
 
+### Testing & A/B
+- Run tests: `pytest`
+- Collect LLM parse outputs for a cases file: `python tools/run_llm_cases.py --cases cases.json --output runA.json`
+- Compare two runs: `python tools/ab_compare.py --cases cases.json --run-a runA.json --run-b runB.json`
+
 ## Running
 
 From the project root:
