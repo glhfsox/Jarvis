@@ -119,8 +119,26 @@ def _tts_worker(text: str, streaming: bool) -> None:
                 _current_proc = None
 
 
+def looks_like_code(text: str) -> bool:
+    if "```" in text:
+        return True
+    lines = text.splitlines()
+    if len(lines) >= 5:
+        code_markers = (";", "{", "}", "#include", "def ", "class ", "using ", "public:",
+                         "private:", "import" , "from" , "using" ,"div")
+        scored = sum(1 for ln in lines if any(tok in ln for tok in code_markers))
+        if scored >= 2:
+            return True
+    return False
+
+
 def speak(text: str, streaming: bool = True) -> None:
     if not text.strip():
+        return
+
+    if looks_like_code(text):
+        # avoid reading code aloud just print it to the console
+        print(text)
         return
 
     # stop any current speech first, so we can interrupt
