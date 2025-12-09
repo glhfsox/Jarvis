@@ -4,7 +4,17 @@ from typing import List, Dict, Callable, Any
 from openai.types.chat import ChatCompletionMessageParam
 
 from llm_client import ask_llm
-from tools.core import open_url, open_app, close_app, get_weather, read_file, list_dir, open_in_vscode
+from tools.core import (
+    open_url,
+    open_app,
+    close_app,
+    get_weather,
+    read_file,
+    list_dir,
+    open_in_vscode,
+    summarize_file,
+    search_text,
+)
 
 
 TOOLS: Dict[str, Callable[..., str]] = {
@@ -15,6 +25,8 @@ TOOLS: Dict[str, Callable[..., str]] = {
     "read_file": read_file,
     "list_dir": list_dir,
     "open_in_vscode": open_in_vscode,
+    "summarize_file": summarize_file,
+    "search_text": search_text,
 }
 
 SYSTEM_TOOLS_DESCRIPTION = """
@@ -67,6 +79,16 @@ Tools:
    - Paths are resolved relative to the project root.
    - Example:
      {"tool": "open_in_vscode", "args": {"path": "cpp/actions.cpp"}}
+
+8) summarize_file(path: str, max_bytes?: int, head_lines?: int)
+   - Returns a short summary: path, size, and the first N lines (truncated).
+   - Example:
+     {"tool": "summarize_file", "args": {"path": "README.md", "head_lines": 30}}
+
+9) search_text(query: str, path?: str, max_matches?: int)
+   - Grep-like search (using ripgrep) under the project root.
+   - Example:
+     {"tool": "search_text", "args": {"query": "window_close_last", "path": "cpp"}}
 
 If no tool is needed, answer the user normally as text.
 """

@@ -22,6 +22,8 @@ class Settings:
     default_terminal: str = "gnome-terminal"
     volume_step_percent: int = 5
     brightness_step_percent: int = 5
+    summarize_max_bytes: int = 16000
+    summarize_head_lines: int = 20
 
 
 def _load_json_config() -> dict:
@@ -40,6 +42,11 @@ def _get_int(cfg: dict, key: str, default: int) -> int:
         return int(cfg.get(key, default))
     except Exception:
         return default
+
+
+def _get_positive_int(cfg: dict, key: str, default: int) -> int:
+    val = _get_int(cfg, key, default)
+    return val if val > 0 else default
 
 
 def load_settings() -> Settings:
@@ -74,4 +81,6 @@ def load_settings() -> Settings:
         default_terminal=cfg.get("default_terminal", "gnome-terminal"),
         volume_step_percent=_get_int(cfg, "volume_step_percent", 5),
         brightness_step_percent=_get_int(cfg, "brightness_step_percent", 5),
+        summarize_max_bytes=_get_positive_int(cfg, "summarize_max_bytes", 16000),
+        summarize_head_lines=_get_positive_int(cfg, "summarize_head_lines", 20),
     )
