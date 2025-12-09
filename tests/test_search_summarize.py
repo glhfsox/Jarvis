@@ -3,7 +3,7 @@ from pathlib import Path
 
 
 def test_summarize_and_search(monkeypatch, tmp_path):
-    root = tmp_path / "proj"
+    root = tmp_path / "proj"  
     root.mkdir()
     file_path = root / "hello.txt"
     file_path.write_text("line1\nline2\nline3\nline4\nline5\n")
