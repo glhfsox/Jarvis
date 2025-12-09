@@ -4,7 +4,7 @@ from typing import List, Dict, Callable, Any
 from openai.types.chat import ChatCompletionMessageParam
 
 from llm_client import ask_llm
-from tools.core import open_url, open_app, close_app, get_weather
+from tools.core import open_url, open_app, close_app, get_weather, read_file, list_dir, open_in_vscode
 
 
 TOOLS: Dict[str, Callable[..., str]] = {
@@ -12,6 +12,9 @@ TOOLS: Dict[str, Callable[..., str]] = {
     "open_app": open_app,
     "close_app": close_app,
     "get_weather": get_weather,
+    "read_file": read_file,
+    "list_dir": list_dir,
+    "open_in_vscode": open_in_vscode,
 }
 
 SYSTEM_TOOLS_DESCRIPTION = """
@@ -46,6 +49,24 @@ Tools:
    - If no city is provided, use the default city.
    - Example:
      {"tool": "get_weather", "args": {"city": "Warsaw"}}
+
+5) read_file(path: str, max_bytes?: int)
+   - Reads a text file from the project root (or a subpath) and returns its contents (truncated if too long).
+   - Paths are resolved relative to the project root; access outside root is blocked.
+   - Example:
+     {"tool": "read_file", "args": {"path": "README.md"}}
+
+6) list_dir(path?: str, max_entries?: int)
+   - Lists files/directories at the given path (default: project root).
+   - Paths are resolved relative to the project root.
+   - Example:
+     {"tool": "list_dir", "args": {"path": "cpp"}}
+
+7) open_in_vscode(path: str)
+   - Opens the given file or folder in VS Code (uses the 'code' CLI).
+   - Paths are resolved relative to the project root.
+   - Example:
+     {"tool": "open_in_vscode", "args": {"path": "cpp/actions.cpp"}}
 
 If no tool is needed, answer the user normally as text.
 """
