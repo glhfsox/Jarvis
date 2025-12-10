@@ -14,6 +14,8 @@ from tools.core import (
     open_in_vscode,
     summarize_file,
     search_text,
+    write_file,
+    make_dir,
 )
 
 
@@ -27,6 +29,8 @@ TOOLS: Dict[str, Callable[..., str]] = {
     "open_in_vscode": open_in_vscode,
     "summarize_file": summarize_file,
     "search_text": search_text,
+    "write_file": write_file,
+    "make_dir": make_dir,
 }
 
 SYSTEM_TOOLS_DESCRIPTION = """
@@ -90,6 +94,26 @@ Tools:
    - Example:
      {"tool": "search_text", "args": {"query": "window_close_last", "path": "cpp"}}
 
+10) write_file(path: str, content: str, append?: bool)
+    - Writes text to a file (creates parent directories if needed). Paths are rooted to the project root.
+    - Absolute paths or ones starting with ~ are allowed if they resolve inside the project root or Documents (~/Documents).
+    - Aliases: "current directory"/"project root" -> ~/githubproj/Jarvis; "documents/..." -> ~/Documents.
+    - Example:
+      {"tool": "write_file", "args": {"path": "notes/todo.txt", "content": "hello", "append": true}}
+
+11) make_dir(path: str)
+    - Creates a directory (parents ok) under the project root.
+    - Absolute/~ paths allowed if inside project root or Documents (~/Documents). Same aliases as above.
+    - Example:
+      {"tool": "make_dir", "args": {"path": "logs/run1"}}
+
+RULES FOR PATH REQUESTS:
+- For any request to create a folder/file ("create/make folder/file", "создай папку/файл"), call make_dir or write_file.
+- Treat "current directory/current folder/project root/корень проекта/здесь" as the project root directory.
+- Treat paths starting with "documents/", "документы/", "docs/" as under ~/Documents.
+- Preserve user-provided path text (including '~') when calling the tool; the backend will normalize it.
+- If the tool succeeds, confirm using the normalized path returned by the tool.
+
 If no tool is needed, answer the user normally as text.
 """
 
@@ -133,7 +157,8 @@ def handle_user_text(
             f"User said: {user_text}\n"
             f"I called tool '{tool_name}' with arguments {args}.\n"
             f"Tool returned: {result}\n"
-            "Now answer the user based on this."
+            "Now answer the user based on this. If the tool succeeded, confirm it using the normalized path in the tool result. "
+            "Do not claim inability unless the tool explicitly failed."
         )
         history.append({"role": "assistant", "content": followup})
 

@@ -9,8 +9,14 @@ import logging
 
 logger = logging.getLogger("jarvis.core")
 
+def _env_path(name: str, default: Path) -> Path:
+    val = os.environ.get(name)
+    base = Path(val) if val is not None else default
+    return base.expanduser().resolve()
+
 _settings = load_settings()
-ROOT_DIR = Path(os.environ.get("JARVIS_ROOT", Path(__file__).resolve().parent.parent)).resolve()
+ROOT_DIR = _env_path("JARVIS_ROOT", Path(__file__).resolve().parent.parent)
+DOCS_DIR = _env_path("JARVIS_DOCUMENTS", Path.home() / "Documents")
 
 APP_COMMANDS: Dict[str, str] = _settings.app_commands or {
     "firefox": "firefox",
@@ -87,12 +93,50 @@ def normalize_app_key(name: str) -> str:
 
 
 def _resolve_path(path: str) -> Path:
-    p = Path(path)
+    def normalize_user_path(raw: str):
+        s = raw.strip()
+        lower = s.lower()
+
+        current_aliases = (
+            "current directory", "current dir", "current folder",
+            "текущая директория", "текущая папка",
+            "project root", "project directory", "project folder",
+            "root of project", "root folder", "корень проекта",
+            "this directory", "this folder", "here", ".", "здесь"
+        )
+        if lower in current_aliases or lower == "":
+            return ".", ROOT_DIR
+
+        for prefix in ("jarvis/", "джарвис/", "jarvis\\", "джарвис\\"):
+            if lower.startswith(prefix):
+                return s[len(prefix):], ROOT_DIR
+        if lower in ("jarvis", "джарвис"):
+            return ".", ROOT_DIR
+
+        for prefix in ("documents/", "документы/", "documents\\", "документы\\", "docs/"):
+            if lower.startswith(prefix):
+                return s[len(prefix):], DOCS_DIR
+        if lower in ("documents", "документы", "docs"):
+            return ".", DOCS_DIR
+
+        return s or ".", ROOT_DIR
+
+    norm, base_root = normalize_user_path(path)
+    p = Path(norm).expanduser()
+    base_root = base_root.expanduser()
     if not p.is_absolute():
-        p = ROOT_DIR / p
-    p = p.resolve()
-    if ROOT_DIR not in p.parents and p != ROOT_DIR:
-        raise ValueError("Path is outside allowed root")
+        p = base_root / p
+    p = p.expanduser().resolve()
+
+    def under(root: Path) -> bool:
+        return p == root or root in p.parents
+
+    allowed_roots = [ROOT_DIR]
+    if DOCS_DIR:
+        allowed_roots.append(DOCS_DIR)
+
+    if not any(under(r) for r in allowed_roots):
+        raise ValueError("Path is outside allowed roots")
     return p
 
 
@@ -222,6 +266,31 @@ def search_text(query: str, path: Optional[str] = None, max_matches: int = 20) -
     if len(lines) > max_matches:
         lines = lines[:max_matches] + ["... (truncated)"]
     return "\n".join(lines)
+
+def make_dir(path: str) -> str:
+    p = _resolve_path(path)
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+        msg = f"Directory ensured: {p}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to create directory {p}: {e}"
+
+
+def write_file(path: str, content: str, append: bool = False) -> str:
+    p = _resolve_path(path)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        mode = "a" if append else "w"
+        with p.open(mode, encoding="utf-8") as f:
+            f.write(content)
+        action = "Appended to" if append else "Wrote to"
+        msg = f"{action} {p}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to write {p}: {e}"
 
 
 def get_weather(city: Optional[str] = None) -> str:
