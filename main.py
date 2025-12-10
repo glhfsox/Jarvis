@@ -60,10 +60,12 @@ def _process_user_text(
     history: List[ChatCompletionMessageParam],
     cpp: CppAssistant,
     user_text: str,
+    speak_back: bool = True,
 ) -> bool:
     if is_exit_phrase(user_text):
         stop_speaking()
-        speak("Goodbye.", streaming=True)
+        if speak_back:
+            speak("Goodbye.", streaming=True)
         return True
 
     cpp.send_chunk(user_text)
@@ -71,12 +73,14 @@ def _process_user_text(
     ack = _local_ack(user_text)
     if ack:
         print(f"AI: {ack}")
-        speak(ack, streaming=True)
+        if speak_back:
+            speak(ack, streaming=True)
         return False
 
     reply = handle_user_text(history, user_text)
     print(f"AI: {reply}")
-    speak(reply, streaming=True)
+    if speak_back:
+        speak(reply, streaming=True)
     return False
 
 
@@ -152,12 +156,14 @@ def main() -> None:
                     print("[MAIN] No transcription. Try again.")
                     continue
                 print(f"[VOICE] {user_text}")
+                speak_back = True
             else:
                 stop_speaking()
                 user_text = user_input.strip()
                 print(f"[TEXT] {user_text}")
+                speak_back = False
 
-            if _process_user_text(history, cpp, user_text):
+            if _process_user_text(history, cpp, user_text, speak_back):
                 break
 
     finally:
