@@ -509,7 +509,7 @@ static int close_app_system(const std::string& appExec) {
 
 
 
-// basic open_url / open_app / close_app
+// basic open_url / open_app / close_app //open_last and so on
 
 static void handleOpenUrl(const Command& cmd) {
     auto it = cmd.args.find("url");
@@ -518,6 +518,28 @@ static void handleOpenUrl(const Command& cmd) {
         return;
     }
     open_url_system(it->second);
+}
+
+static void handleOpenLast(const Command&) {
+    bool hasApp = !g_ctx.last_app.empty() && g_ctx.last_app_seq > 0;
+    bool hasUrl = !g_ctx.last_url.empty() && g_ctx.last_url_seq > 0;
+
+    if (!hasApp && !hasUrl) {
+        std::cerr << "Jarvis: no last app or url remembered\n";
+        return;
+    }
+
+    if (hasApp && (!hasUrl || g_ctx.last_app_seq >= g_ctx.last_url_seq)) {
+        launch_app(g_ctx.last_app);
+        return;
+    }
+
+    if (hasUrl) {
+        open_url_system(g_ctx.last_url);
+        return;
+    }
+
+    std::cerr << "Jarvis: no last app or url remembered\n";
 }
 
 static void handleOpenUrlLast(const Command&) {
@@ -835,6 +857,7 @@ static void handleWindowCloseLast(const Command&) {
 
 void register_basic_actions(CommandDispatcher& disp) {
     disp.registerHandler("open_url",  handleOpenUrl);
+    disp.registerHandler("open_last", handleOpenLast);
     disp.registerHandler("open_url_last", handleOpenUrlLast);
     disp.registerHandler("open_app",  handleOpenApp);
     disp.registerHandler("close_app", handleCloseApp);

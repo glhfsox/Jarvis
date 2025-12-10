@@ -158,6 +158,7 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "  - window_inspect(name?: string)             # list windows, optionally highlight best match\n\n";
     prompt += "  - window_focus_last()\n";
     prompt += "  - window_close_last()\n";
+    prompt += "  - open_last()  # open last app or url based on recent context\n";
     prompt += "  - open_url_last()\n";
     prompt += "  - media_repeat_last()\n";
 
@@ -173,8 +174,14 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "- Pronoun-based close:\n";
     prompt += R"({"name": "window_close_last", "args": {}, "raw_text": "close it"})";
     prompt += "\n";
+    prompt += "- Pronoun-based focus:\n";
+    prompt += R"({"name": "window_focus_last", "args": {}, "raw_text": "focus it"})";
+    prompt += "\n";
     prompt += "- Pronoun-based close in Russian:\n";
     prompt += R"({"name": "window_close_last", "args": {}, "raw_text": "закрой его"})";
+    prompt += "\n";
+    prompt += "- Pronoun-based focus in Russian:\n";
+    prompt += R"({"name": "window_focus_last", "args": {}, "raw_text": "покажи его"})";
     prompt += "\n\n";
 
     prompt += "Rules:\n";
@@ -185,6 +192,7 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "- Preserve the original user phrase in raw_text.\n\n";
     prompt += "- Example: if the user says 'open Firefox' then later 'close it', you MUST use window_close_last(), not close_app.\n";
     prompt += "- Same for terminals and apps: 'close it' / 'закрой его' / 'закрой это' -> window_close_last().\n";
+    prompt += "- Pronoun-based focus: 'focus it' / 'highlight it' / 'покажи его' -> window_focus_last().\n";
 
 
     prompt += "Here is the transcript:\n\"\"\"" + transcript + "\"\"\"";
@@ -383,11 +391,20 @@ void Assistant::detectAndRun() {
         (lower.find("again") != std::string::npos && lower.find("media") != std::string::npos) ||
         (lower.find("снова") != std::string::npos && lower.find("муз") != std::string::npos);
 
-    bool looks_open_last_url =
+    bool looks_focus_it =
+        (lower.find("focus it") != std::string::npos) ||
+        (lower.find("focus the same") != std::string::npos) ||
+        (lower.find("highlight it") != std::string::npos) ||
+        (lower.find("покажи его") != std::string::npos) ||
+        (lower.find("фокус") != std::string::npos && lower.find("его") != std::string::npos);
+
+    bool looks_open_last =
         (lower.find("open last") != std::string::npos) ||
         (lower.find("open it again") != std::string::npos) ||
+        (lower.find("open the same") != std::string::npos) ||
         (lower.find("открой еще раз") != std::string::npos) ||
-        (lower.find("открой последнее") != std::string::npos);
+        (lower.find("открой последнее") != std::string::npos) ||
+        (lower.find("открой так же") != std::string::npos);
 
     bool looks_multi_command =
         (lower.find(" and ") != std::string::npos) ||
@@ -398,8 +415,11 @@ void Assistant::detectAndRun() {
     if (looks_close_it) {
         quickIntent = "window_close_last";
     }
-    if (looks_open_last_url) {
-        quickIntent = "open_url_last";
+    if (looks_focus_it) {
+        quickIntent = "window_focus_last";
+    }
+    if (looks_open_last) {
+        quickIntent = "open_last";
     }
     if (looks_repeat_media) {
         quickIntent = "media_repeat_last";
