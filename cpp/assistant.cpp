@@ -126,6 +126,7 @@ static std::string buildPrompt(const std::string& transcript) {
 
     prompt += "ALLOWED COMMANDS:\n";
     prompt += "  - open_url(url: string)\n";
+    prompt += "  - open_url_last()\n";
     prompt += "  - open_app(name: string)\n";
     prompt += "  - close_app(name: string)\n";
     prompt += "  - open_terminal(command: optional string)\n";
@@ -138,6 +139,7 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "  - media_seek_backward()\n";
     prompt += "  - media_volume_mute()\n";
     prompt += "  - media_volume_unmute()\n";
+    prompt += "  - media_repeat_last()\n";
     prompt += "  - system_volume_up()\n";
     prompt += "  - system_volume_down()\n";
     prompt += "  - system_volume_mute()\n";
@@ -156,6 +158,8 @@ static std::string buildPrompt(const std::string& transcript) {
     prompt += "  - window_inspect(name?: string)             # list windows, optionally highlight best match\n\n";
     prompt += "  - window_focus_last()\n";
     prompt += "  - window_close_last()\n";
+    prompt += "  - open_url_last()\n";
+    prompt += "  - media_repeat_last()\n";
 
 
     prompt += "Examples of valid output:\n";
@@ -374,6 +378,17 @@ void Assistant::detectAndRun() {
         (lower.find("закрой его") != std::string::npos) ||
         (lower.find("закрой это") != std::string::npos);
 
+    bool looks_repeat_media =
+        (lower.find("again") != std::string::npos && lower.find("music") != std::string::npos) ||
+        (lower.find("again") != std::string::npos && lower.find("media") != std::string::npos) ||
+        (lower.find("снова") != std::string::npos && lower.find("муз") != std::string::npos);
+
+    bool looks_open_last_url =
+        (lower.find("open last") != std::string::npos) ||
+        (lower.find("open it again") != std::string::npos) ||
+        (lower.find("открой еще раз") != std::string::npos) ||
+        (lower.find("открой последнее") != std::string::npos);
+
     bool looks_multi_command =
         (lower.find(" and ") != std::string::npos) ||
         (lower.find(" и ") != std::string::npos) ||
@@ -382,6 +397,12 @@ void Assistant::detectAndRun() {
     std::string quickIntent = detector_.detectIntent(tail);
     if (looks_close_it) {
         quickIntent = "window_close_last";
+    }
+    if (looks_open_last_url) {
+        quickIntent = "open_url_last";
+    }
+    if (looks_repeat_media) {
+        quickIntent = "media_repeat_last";
     }
     if (wants_spotify_url && quickIntent == "open_spotify") {
         quickIntent.clear(); // let LLM treat it as URL

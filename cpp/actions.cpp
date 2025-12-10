@@ -18,10 +18,13 @@ struct ContextMemory {
     std::string last_app;
     std::string last_url;
     std::string last_window_id;
+    std::string last_media_action;
     pid_t last_app_pid = -1;
     uint64_t seq_counter = 0;
     uint64_t last_app_seq = 0;
     uint64_t last_window_seq = 0;
+    uint64_t last_url_seq = 0;
+    uint64_t last_media_seq = 0;
 };
 
 static ContextMemory g_ctx;
@@ -104,6 +107,19 @@ static void remember_last_window(const std::string& wid) {
     g_ctx.seq_counter++;
     g_ctx.last_window_seq = g_ctx.seq_counter;
 }
+
+static void remember_last_url(const std::string& url) {
+    g_ctx.last_url = url;
+    g_ctx.seq_counter++;
+    g_ctx.last_url_seq = g_ctx.seq_counter;
+}
+
+static void remember_last_media(const std::string& action) {
+    g_ctx.last_media_action = action;
+    g_ctx.seq_counter++;
+    g_ctx.last_media_seq = g_ctx.seq_counter;
+}
+
 
 static std::string app_to_window_query(const std::string& app) {
     std::string lower = toLowerCopy(app);
@@ -431,7 +447,7 @@ static int open_url_system(const std::string& rawUrl) {
         }
     }
 
-    g_ctx.last_url = url;
+    remember_last_url(url);
     return run_cmd(browser + " '" + url + "' &");
 }
 
@@ -504,6 +520,15 @@ static void handleOpenUrl(const Command& cmd) {
     open_url_system(it->second);
 }
 
+static void handleOpenUrlLast(const Command&) {
+    if (g_ctx.last_url.empty()) {
+        std::cerr << "Jarvis: no last url remembered\n";
+        return;
+    }
+    remember_last_url(g_ctx.last_url);
+    open_url_system(g_ctx.last_url);
+}
+
 static void handleOpenApp(const Command& cmd) {
     auto it = cmd.args.find("name");
     if (it == cmd.args.end()) {
@@ -570,14 +595,15 @@ static void handleMediaSimple(const std::string& subcmd) {
     run_cmd("playerctl " + subcmd);
 }
 
-static void handleMediaPlayPause(const Command&)  { handleMediaSimple("play-pause"); }
-static void handleMediaNext(const Command&)       { handleMediaSimple("next"); }
-static void handleMediaPrev(const Command&)       { handleMediaSimple("previous"); }
-static void handleMediaVolUp(const Command&)      { handleMediaSimple("volume 0.05+"); }
-static void handleMediaVolDown(const Command&)    { handleMediaSimple("volume 0.05-"); }
-static void handleMediaSeekForward(const Command&) { run_cmd("playerctl position 10+"); }
-static void handleMediaSeekBackward(const Command&) { run_cmd("playerctl position 10-"); }
+static void handleMediaPlayPause(const Command&)  { remember_last_media("media_play_pause"); handleMediaSimple("play-pause"); }
+static void handleMediaNext(const Command&)       { remember_last_media("media_next"); handleMediaSimple("next"); }
+static void handleMediaPrev(const Command&)       { remember_last_media("media_prev"); handleMediaSimple("previous"); }
+static void handleMediaVolUp(const Command&)      { remember_last_media("media_volume_up"); handleMediaSimple("volume 0.05+"); }
+static void handleMediaVolDown(const Command&)    { remember_last_media("media_volume_down"); handleMediaSimple("volume 0.05-"); }
+static void handleMediaSeekForward(const Command&) { remember_last_media("media_seek_forward"); run_cmd("playerctl position 10+"); }
+static void handleMediaSeekBackward(const Command&) { remember_last_media("media_seek_backward"); run_cmd("playerctl position 10-"); }
 static void handleMediaMute(const Command&)       {
+    remember_last_media("media_volume_mute");
     system_volume(
         "wpctl set-mute @DEFAULT_AUDIO_SINK@ 1",
         "pactl set-sink-mute @DEFAULT_SINK@ 1",
@@ -585,11 +611,36 @@ static void handleMediaMute(const Command&)       {
     );
 }
 static void handleMediaUnmute(const Command&)     {
+    remember_last_media("media_volume_unmute");
     system_volume(
         "wpctl set-mute @DEFAULT_AUDIO_SINK@ 0",
         "pactl set-sink-mute @DEFAULT_SINK@ 0",
         "amixer -q -D pulse sset Master unmute"
     );
+}
+
+static bool run_media_action(const std::string& name) {
+    Command dummy;
+    if (name == "media_play_pause") { handleMediaPlayPause(dummy); return true; }
+    if (name == "media_next") { handleMediaNext(dummy); return true; }
+    if (name == "media_prev") { handleMediaPrev(dummy); return true; }
+    if (name == "media_volume_up") { handleMediaVolUp(dummy); return true; }
+    if (name == "media_volume_down") { handleMediaVolDown(dummy); return true; }
+    if (name == "media_seek_forward") { handleMediaSeekForward(dummy); return true; }
+    if (name == "media_seek_backward") { handleMediaSeekBackward(dummy); return true; }
+    if (name == "media_volume_mute") { handleMediaMute(dummy); return true; }
+    if (name == "media_volume_unmute") { handleMediaUnmute(dummy); return true; }
+    return false;
+}
+
+static void handleMediaRepeatLast(const Command&) {
+    if (g_ctx.last_media_action.empty()) {
+        std::cerr << "Jarvis: no last media action remembered\n";
+        return;
+    }
+    if (!run_media_action(g_ctx.last_media_action)) {
+        std::cerr << "Jarvis: unknown last media action '" << g_ctx.last_media_action << "'\n";
+    }
 }
 
 // system controls
@@ -784,6 +835,7 @@ static void handleWindowCloseLast(const Command&) {
 
 void register_basic_actions(CommandDispatcher& disp) {
     disp.registerHandler("open_url",  handleOpenUrl);
+    disp.registerHandler("open_url_last", handleOpenUrlLast);
     disp.registerHandler("open_app",  handleOpenApp);
     disp.registerHandler("close_app", handleCloseApp);
     disp.registerHandler("open_terminal", handleOpenTerminal);
@@ -806,6 +858,7 @@ void register_media_actions(CommandDispatcher& disp) {
     disp.registerHandler("media_volume_unmute", handleMediaUnmute);
     disp.registerHandler("media_seek_forward",  handleMediaSeekForward);
     disp.registerHandler("media_seek_backward", handleMediaSeekBackward);
+    disp.registerHandler("media_repeat_last",   handleMediaRepeatLast);
 }
 
 void register_system_actions(CommandDispatcher& disp) {
