@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 EXIT_KEYWORDS = {
-    "exit", "quit", "end", "stop", "bye",
+    "exit", "quit", "end", "stop", "bye", "пока" ,
     "выход", "конец", "стоп", "хватит", "до свидания",
 }
 

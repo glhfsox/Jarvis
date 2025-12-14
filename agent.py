@@ -17,6 +17,7 @@ from tools.core import (
     search_text,
     write_file,
     make_dir,
+    delete_path,
 )
 
 
@@ -32,6 +33,7 @@ TOOLS: Dict[str, Callable[..., str]] = {
     "search_text": search_text,
     "write_file": write_file,
     "make_dir": make_dir,
+    "delete_path": delete_path,
 }
 
 SYSTEM_TOOLS_DESCRIPTION = """
@@ -98,7 +100,7 @@ Tools:
 10) write_file(path: str, content: str, append?: bool)
     - Writes text to a file (creates parent directories if needed). Paths are rooted to the project root.
     - Absolute paths or ones starting with ~ are allowed if they resolve inside the project root or Documents (~/Documents).
-    - Aliases: "current directory"/"project root" -> ~/githubproj/Jarvis; "documents/..." -> ~/Documents.
+    - Aliases: "current directory"/"project root" -> project root directory; "documents/..." -> ~/Documents.
     - Example:
       {"tool": "write_file", "args": {"path": "notes/todo.txt", "content": "hello", "append": true}}
 
@@ -108,8 +110,18 @@ Tools:
     - Example:
       {"tool": "make_dir", "args": {"path": "logs/run1"}}
 
+12) delete_path(path: str, recursive?: bool)
+    - Deletes a file or directory (directory deletion is recursive by default).
+    - Allowed locations: project root directory and ~/Documents.
+    - Safety: refuses to delete the project root itself or ~/Documents itself.
+    - Example (file):
+      {"tool": "delete_path", "args": {"path": "ii/zalupa.txt"}}
+    - Example (directory):
+      {"tool": "delete_path", "args": {"path": "ii"}}
+
 RULES FOR PATH REQUESTS:
 - For any request to create a folder/file ("create/make folder/file", "создай папку/файл"), call make_dir or write_file.
+- For any request to delete/remove a file/folder ("delete/remove", "удали/удалить"), call delete_path.
 - Treat "current directory/current folder/project root/корень проекта/здесь" as the project root directory.
 - Treat paths starting with "documents/", "документы/", "docs/" as under ~/Documents.
 - Preserve user-provided path text (including '~') when calling the tool; the backend will normalize it.
@@ -175,7 +187,10 @@ def handle_user_text(
             history.append({"role": "assistant", "content": reply})
             return reply
 
-        result = TOOLS[tool_name](**args)
+        try:
+            result = TOOLS[tool_name](**args)
+        except Exception as e:
+            result = f"Tool '{tool_name}' failed: {type(e).__name__}: {e}"
 
         # Return the tool result directly to avoid the model outputting mixed JSON+text
         # and to ensure deterministic confirmation for filesystem operations.

@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional, Dict
@@ -291,6 +292,31 @@ def write_file(path: str, content: str, append: bool = False) -> str:
         return msg
     except Exception as e:
         return f"Failed to write {p}: {e}"
+
+def delete_path(path: str, recursive: bool = True) -> str:
+    p = _resolve_path(path)
+    try:
+        if p == ROOT_DIR or (DOCS_DIR and p == DOCS_DIR):
+            return f"Refusing to delete root directory: {p}"
+
+        if not p.exists():
+            return f"Path not found: {p}"
+
+        if p.is_dir():
+            if recursive:
+                shutil.rmtree(p)
+            else:
+                p.rmdir()
+            msg = f"Deleted directory: {p}"
+            print(f"Jarvis: {msg}")
+            return msg
+
+        p.unlink()
+        msg = f"Deleted file: {p}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to delete {p}: {e}"
 
 
 def get_weather(city: Optional[str] = None) -> str:
