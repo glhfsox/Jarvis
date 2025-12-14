@@ -100,12 +100,17 @@ Tools:
      {"tool": "search_text", "args": {"query": "window_close_last", "path": "cpp"}}
 
 10) write_file(path: str, content?: str, append?: bool)
-    - Writes text to a file (creates parent directories if needed). Paths are rooted to the project root.
+    - Creates or overwrites a text file (creates parent directories if needed).
     - If you only need to create an empty file, omit content or pass an empty string.
+    - If the user asks to "write/put/save/запиши/напиши/вставь" some text into a file, pass that text as `content`.
+    - If the user asks to "append/допиши/добавь/в конец", set `append: true` instead of overwriting.
+    - IMPORTANT: `content` MUST be a valid JSON string (escape newlines as \\n).
     - Absolute paths or ones starting with ~ are allowed if they resolve inside the project root or Documents (~/Documents).
     - Aliases: "current directory"/"project root" -> project root directory; "documents/..." -> ~/Documents.
-    - Example:
+    - Example (write text):
       {"tool": "write_file", "args": {"path": "notes/todo.txt", "content": "hello", "append": true}}
+    - Example (generate code):
+      {"tool": "write_file", "args": {"path": "ii/main.py", "content": "def main():\\n    print('hi')\\n\\nif __name__ == '__main__':\\n    main()\\n"}}
 
 11) make_dir(path: str)
     - Creates a directory (parents ok) under the project root.
