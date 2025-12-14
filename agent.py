@@ -1,4 +1,5 @@
 import json
+from json import JSONDecoder
 from typing import List, Dict, Callable, Any
 
 from openai.types.chat import ChatCompletionMessageParam
@@ -133,18 +134,41 @@ def handle_user_text(
     history: List[ChatCompletionMessageParam],
     user_text: str,
 ) -> str:
+    def _extract_tool_call(raw: str) -> dict | None:
+        dec = JSONDecoder()
+        s = raw.strip()
+
+        try:
+            data: Any = json.loads(s)
+        except json.JSONDecodeError:
+            data = None
+        if isinstance(data, dict) and "tool" in data:
+            return data
+        if isinstance(data, list) and data and isinstance(data[0], dict) and "tool" in data[0]:
+            return data[0]
+
+        # robust path: find the first json object/array anywhere in the response 
+        for i, ch in enumerate(raw):
+            if ch not in "{[":
+                continue
+            try:
+                obj, _end = dec.raw_decode(raw[i:])
+            except Exception:
+                continue
+            if isinstance(obj, dict) and "tool" in obj:
+                return obj
+            if isinstance(obj, list) and obj and isinstance(obj[0], dict) and "tool" in obj[0]:
+                return obj[0]
+        return None
+
     history.append({"role": "user", "content": user_text})
 
     raw = ask_llm(history)
 
-    try:
-        data: Any = json.loads(raw)
-    except json.JSONDecodeError:
-        data = None
-
-    if isinstance(data, dict) and "tool" in data:
-        tool_name = data.get("tool")
-        args = data.get("args", {}) or {}
+    tool_call = _extract_tool_call(raw)
+    if tool_call is not None:
+        tool_name = tool_call.get("tool")
+        args = tool_call.get("args", {}) or {}
 
         if tool_name not in TOOLS:
             reply = f"Unknown tool: {tool_name}"
@@ -153,18 +177,10 @@ def handle_user_text(
 
         result = TOOLS[tool_name](**args)
 
-        followup = (
-            f"User said: {user_text}\n"
-            f"I called tool '{tool_name}' with arguments {args}.\n"
-            f"Tool returned: {result}\n"
-            "Now answer the user based on this. If the tool succeeded, confirm it using the normalized path in the tool result. "
-            "Do not claim inability unless the tool explicitly failed."
-        )
-        history.append({"role": "assistant", "content": followup})
-
-        final = ask_llm(history)
-        history.append({"role": "assistant", "content": final})
-        return final
+        # Return the tool result directly to avoid the model outputting mixed JSON+text
+        # and to ensure deterministic confirmation for filesystem operations.
+        history.append({"role": "assistant", "content": result})
+        return result
 
     reply = raw
     history.append({"role": "assistant", "content": reply})
