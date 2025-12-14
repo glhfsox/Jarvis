@@ -321,5 +321,178 @@ def delete_path(path: str, recursive: bool = True) -> str:
         return f"Failed to delete {p}: {e}"
 
 
+def move_path(src: str, dest: str, overwrite: bool = False) -> str:
+    src_p = _resolve_path(src)
+    dest_p = _resolve_path(dest)
+    try:
+        if not src_p.exists():
+            return f"Path not found: {src_p}"
+
+        if dest_p.is_dir():
+            dest_final = dest_p / src_p.name
+        else:
+            dest_final = dest_p
+
+        if src_p == dest_final:
+            return f"Source and destination are the same: {src_p}"
+
+        if src_p.is_dir() and src_p in dest_final.parents:
+            return f"Refusing to move a directory into itself: {src_p} -> {dest_final}"
+
+        dest_final.parent.mkdir(parents=True, exist_ok=True)
+
+        if dest_final.exists():
+            if not overwrite:
+                return f"Destination exists: {dest_final}"
+            if dest_final == ROOT_DIR or (DOCS_DIR and dest_final == DOCS_DIR):
+                return f"Refusing to delete root directory: {dest_final}"
+            if dest_final.is_dir():
+                shutil.rmtree(dest_final)
+            else:
+                dest_final.unlink()
+
+        shutil.move(str(src_p), str(dest_final))
+        msg = f"Moved: {src_p} -> {dest_final}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to move {src_p} -> {dest_p}: {e}"
+
+
+def copy_path(src: str, dest: str, overwrite: bool = False) -> str:
+    src_p = _resolve_path(src)
+    dest_p = _resolve_path(dest)
+    try:
+        if not src_p.exists():
+            return f"Path not found: {src_p}"
+
+        if dest_p.is_dir():
+            dest_final = dest_p / src_p.name
+        else:
+            dest_final = dest_p
+
+        if src_p == dest_final:
+            return f"Source and destination are the same: {src_p}"
+
+        if src_p.is_dir() and src_p in dest_final.parents:
+            return f"Refusing to copy a directory into itself: {src_p} -> {dest_final}"
+
+        if dest_final.exists():
+            if not overwrite:
+                return f"Destination exists: {dest_final}"
+            if dest_final == ROOT_DIR or (DOCS_DIR and dest_final == DOCS_DIR):
+                return f"Refusing to delete root directory: {dest_final}"
+            if dest_final.is_dir():
+                shutil.rmtree(dest_final)
+            else:
+                dest_final.unlink()
+
+        if src_p.is_dir():
+            shutil.copytree(src_p, dest_final)
+            msg = f"Copied directory: {src_p} -> {dest_final}"
+        else:
+            dest_final.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_p, dest_final)
+            msg = f"Copied file: {src_p} -> {dest_final}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to copy {src_p} -> {dest_p}: {e}"
+
+
+def rename_path(path: str, new_name: str, overwrite: bool = False) -> str:
+    p = _resolve_path(path)
+    try:
+        if not p.exists():
+            return f"Path not found: {p}"
+
+        name = (new_name or "").strip()
+        if not name:
+            return "Invalid new_name"
+        if "/" in name or "\\" in name:
+            return "Invalid new_name (must be a name, not a path)"
+        if name in (".", ".."):
+            return "Invalid new_name"
+
+        dest_final = p.parent / name
+        return move_path(str(p), str(dest_final), overwrite=overwrite)
+    except Exception as e:
+        return f"Failed to rename {p}: {e}"
+
+
+def replace_text(path: str, old: str, new: str, count: int = 1) -> str:
+    p = _resolve_path(path)
+    try:
+        if not p.exists():
+            return f"Path not found: {p}"
+        if p.is_dir():
+            return f"{p} is a directory"
+        if not old:
+            return "Old text is empty"
+
+        try:
+            text = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return f"Failed to read {p}: not valid text"
+
+        occurrences = text.count(old)
+        if occurrences == 0:
+            return f"Text not found in {p}"
+
+        if count is None:
+            count = 1
+        if count <= 0:
+            count = -1
+
+        replaced = occurrences if count == -1 else min(count, occurrences)
+        new_text = text.replace(old, new, count)
+        p.write_text(new_text, encoding="utf-8")
+
+        msg = f"Replaced {replaced} occurrence(s) in {p}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to edit {p}: {e}"
+
+
+def insert_text(path: str, text: str, after: str | None = None, before: str | None = None) -> str:
+    p = _resolve_path(path)
+    try:
+        if not p.exists():
+            return f"Path not found: {p}"
+        if p.is_dir():
+            return f"{p} is a directory"
+        if after and before:
+            return "Provide only one of 'after' or 'before'"
+
+        try:
+            content = p.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return f"Failed to read {p}: not valid UTF-8 text"
+
+        insert_at = None
+        if after is not None:
+            idx = content.find(after)
+            if idx == -1:
+                return f"Anchor not found in {p}"
+            insert_at = idx + len(after)
+        elif before is not None:
+            idx = content.find(before)
+            if idx == -1:
+                return f"Anchor not found in {p}"
+            insert_at = idx
+        else:
+            insert_at = len(content)
+
+        updated = content[:insert_at] + (text or "") + content[insert_at:]
+        p.write_text(updated, encoding="utf-8")
+
+        msg = f"Inserted text into {p}"
+        print(f"Jarvis: {msg}")
+        return msg
+    except Exception as e:
+        return f"Failed to edit {p}: {e}"
+
+
 def get_weather(city: Optional[str] = None) -> str:
     return _get_weather(city)

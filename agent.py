@@ -18,6 +18,11 @@ from tools.core import (
     write_file,
     make_dir,
     delete_path,
+    move_path,
+    copy_path,
+    rename_path,
+    replace_text,
+    insert_text,
 )
 
 
@@ -34,6 +39,11 @@ TOOLS: Dict[str, Callable[..., str]] = {
     "write_file": write_file,
     "make_dir": make_dir,
     "delete_path": delete_path,
+    "move_path": move_path,
+    "copy_path": copy_path,
+    "rename_path": rename_path,
+    "replace_text": replace_text,
+    "insert_text": insert_text,
 }
 
 SYSTEM_TOOLS_DESCRIPTION = """
@@ -127,9 +137,36 @@ Tools:
     - Example (directory):
       {"tool": "delete_path", "args": {"path": "ii"}}
 
+13) move_path(src: str, dest: str, overwrite?: bool)
+    - Moves/renames a file or directory.
+    - Example:
+      {"tool": "move_path", "args": {"src": "ii/out.txt", "dest": "documents/out.txt"}}
+
+14) copy_path(src: str, dest: str, overwrite?: bool)
+    - Copies a file or directory.
+    - Example:
+      {"tool": "copy_path", "args": {"src": "ii", "dest": "documents/ii_backup"}}
+
+15) rename_path(path: str, new_name: str, overwrite?: bool)
+    - Renames a file or directory within the same folder.
+    - Example:
+      {"tool": "rename_path", "args": {"path": "ii/out.txt", "new_name": "out_old.txt"}}
+
+16) replace_text(path: str, old: str, new: str, count?: int)
+    - Replaces exact text inside an existing UTF-8 text file (count defaults to 1; use count: 0 to replace all).
+    - Example:
+      {"tool": "replace_text", "args": {"path": "ii/main.py", "old": "print('hi')", "new": "print('hello')", "count": 1}}
+
+17) insert_text(path: str, text: str, after?: str, before?: str)
+    - Inserts text into an existing UTF-8 text file (after/before are optional anchors; if omitted, appends).
+    - Example:
+      {"tool": "insert_text", "args": {"path": "ii/main.py", "after": "def main():\\n", "text": "    print('x')\\n"}}
+
 RULES FOR PATH REQUESTS:
 - For any request to create a folder/file ("create/make folder/file", "создай папку/файл"), call make_dir or write_file.
 - For any request to delete/remove a file/folder ("delete/remove", "удали/удалить"), call delete_path.
+- For "move/перемести/переместить/rename/переименуй/переименовать/copy/скопируй/скопировать", use move_path/rename_path/copy_path.
+- For "replace/замени/заменить", use replace_text. For "insert/вставь/вставить/добавь ... после/перед", use insert_text.
 - Treat "current directory/current folder/project root/корень проекта/здесь" as the project root directory.
 - Treat paths starting with "documents/", "документы/", "docs/" as under ~/Documents.
 - If the user says "in it/в ней/в нём", apply it to the most recently mentioned directory in the SAME request.
