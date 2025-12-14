@@ -38,7 +38,9 @@ TOOLS: Dict[str, Callable[..., str]] = {
 
 SYSTEM_TOOLS_DESCRIPTION = """
 You have access to the following tools. When you want to call a tool, you MUST respond
-ONLY with a JSON object of the form {"tool": "...", "args": {...}}.
+ONLY with valid JSON:
+- Either a single object: {"tool": "...", "args": {...}}
+- Or an array of such objects, if the user asked for multiple actions (keep the order of execution).
 
 Tools:
 
@@ -97,8 +99,9 @@ Tools:
    - Example:
      {"tool": "search_text", "args": {"query": "window_close_last", "path": "cpp"}}
 
-10) write_file(path: str, content: str, append?: bool)
+10) write_file(path: str, content?: str, append?: bool)
     - Writes text to a file (creates parent directories if needed). Paths are rooted to the project root.
+    - If you only need to create an empty file, omit content or pass an empty string.
     - Absolute paths or ones starting with ~ are allowed if they resolve inside the project root or Documents (~/Documents).
     - Aliases: "current directory"/"project root" -> project root directory; "documents/..." -> ~/Documents.
     - Example:
@@ -124,8 +127,20 @@ RULES FOR PATH REQUESTS:
 - For any request to delete/remove a file/folder ("delete/remove", "удали/удалить"), call delete_path.
 - Treat "current directory/current folder/project root/корень проекта/здесь" as the project root directory.
 - Treat paths starting with "documents/", "документы/", "docs/" as under ~/Documents.
+- If the user says "in it/в ней/в нём", apply it to the most recently mentioned directory in the SAME request.
+- If the user says "delete the last/удали последний", delete the last file path mentioned in the SAME request.
 - Preserve user-provided path text (including '~') when calling the tool; the backend will normalize it.
 - If the tool succeeds, confirm using the normalized path returned by the tool.
+
+MULTI-ACTION EXAMPLE (keep output JSON only):
+User: "создай папку ii в текущей директории, в ней создай файл out.txt и put.txt и удали последний"
+Assistant:
+[
+  {"tool":"make_dir","args":{"path":"ii"}},
+  {"tool":"write_file","args":{"path":"ii/out.txt","content":""}},
+  {"tool":"write_file","args":{"path":"ii/put.txt","content":""}},
+  {"tool":"delete_path","args":{"path":"ii/put.txt"}}
+]
 
 If no tool is needed, answer the user normally as text.
 """
@@ -146,7 +161,7 @@ def handle_user_text(
     history: List[ChatCompletionMessageParam],
     user_text: str,
 ) -> str:
-    def _extract_tool_call(raw: str) -> dict | None:
+    def _extract_tool_calls(raw: str) -> list[dict]:
         dec = JSONDecoder()
         s = raw.strip()
 
@@ -155,9 +170,11 @@ def handle_user_text(
         except json.JSONDecodeError:
             data = None
         if isinstance(data, dict) and "tool" in data:
-            return data
-        if isinstance(data, list) and data and isinstance(data[0], dict) and "tool" in data[0]:
-            return data[0]
+            return [data]
+        if isinstance(data, list):
+            tool_items = [x for x in data if isinstance(x, dict) and "tool" in x]
+            if tool_items:
+                return tool_items
 
         # robust path: find the first json object/array anywhere in the response 
         for i, ch in enumerate(raw):
@@ -168,34 +185,36 @@ def handle_user_text(
             except Exception:
                 continue
             if isinstance(obj, dict) and "tool" in obj:
-                return obj
-            if isinstance(obj, list) and obj and isinstance(obj[0], dict) and "tool" in obj[0]:
-                return obj[0]
-        return None
+                return [obj]
+            if isinstance(obj, list):
+                tool_items = [x for x in obj if isinstance(x, dict) and "tool" in x]
+                if tool_items:
+                    return tool_items
+        return []
 
     history.append({"role": "user", "content": user_text})
 
     raw = ask_llm(history)
 
-    tool_call = _extract_tool_call(raw)
-    if tool_call is not None:
-        tool_name = tool_call.get("tool")
-        args = tool_call.get("args", {}) or {}
+    tool_calls = _extract_tool_calls(raw)
+    if tool_calls:
+        results: list[str] = []
+        for call in tool_calls:
+            tool_name = call.get("tool")
+            args = call.get("args", {}) or {}
 
-        if tool_name not in TOOLS:
-            reply = f"Unknown tool: {tool_name}"
-            history.append({"role": "assistant", "content": reply})
-            return reply
+            if tool_name not in TOOLS:
+                results.append(f"Unknown tool: {tool_name}")
+                continue
 
-        try:
-            result = TOOLS[tool_name](**args)
-        except Exception as e:
-            result = f"Tool '{tool_name}' failed: {type(e).__name__}: {e}"
+            try:
+                results.append(TOOLS[tool_name](**args))
+            except Exception as e:
+                results.append(f"Tool '{tool_name}' failed: {type(e).__name__}: {e}")
 
-        # Return the tool result directly to avoid the model outputting mixed JSON+text
-        # and to ensure deterministic confirmation for filesystem operations.
-        history.append({"role": "assistant", "content": result})
-        return result
+        out = results[0] if len(results) == 1 else "\n".join(f"{i+1}) {r}" for i, r in enumerate(results))
+        history.append({"role": "assistant", "content": out})
+        return out
 
     reply = raw
     history.append({"role": "assistant", "content": reply})

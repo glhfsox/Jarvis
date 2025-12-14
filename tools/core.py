@@ -279,9 +279,11 @@ def make_dir(path: str) -> str:
         return f"Failed to create directory {p}: {e}"
 
 
-def write_file(path: str, content: str, append: bool = False) -> str:
+def write_file(path: str, content: str = "", append: bool = False) -> str:
     p = _resolve_path(path)
     try:
+        if content is None:
+            content = ""
         p.parent.mkdir(parents=True, exist_ok=True)
         mode = "a" if append else "w"
         with p.open(mode, encoding="utf-8") as f:

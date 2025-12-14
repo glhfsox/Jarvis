@@ -20,6 +20,11 @@ def test_write_and_make_dir(monkeypatch, tmp_path):
     assert "Wrote to" in res_write
     assert (root / "foo" / "bar" / "file.txt").read_text() == "hello"
 
+    # empty file creation (content omitted)
+    res_empty = core.write_file("empty.txt")
+    assert "Wrote to" in res_empty
+    assert (root / "empty.txt").read_text() == ""
+
     res_append = core.write_file("foo/bar/file.txt", " world", append=True)
     assert "Appended to" in res_append
     assert (root / "foo" / "bar" / "file.txt").read_text() == "hello world"
