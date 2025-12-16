@@ -6,6 +6,7 @@ from typing import Optional, Dict
 
 from config import load_settings
 from .weather import get_weather as _get_weather
+from .registry import tool
 import logging
 
 logger = logging.getLogger("jarvis.core")
@@ -141,20 +142,24 @@ def _resolve_path(path: str) -> Path:
     return p
 
 
+@tool
 def open_url(url: str) -> str:
     return f"Opened {url} in the default browser"
 
 
+@tool
 def open_app(name: str) -> str:
     key = normalize_app_key(name)
     return f"Launched app: {key}"
 
 
+@tool
 def close_app(name: str) -> str:
     key = normalize_app_key(name)
     return f"Requested to close app: {key}"
 
 
+@tool
 def read_file(path: str, max_bytes: int = 8000) -> str:
     p = _resolve_path(path)
     data = p.read_bytes()
@@ -165,7 +170,9 @@ def read_file(path: str, max_bytes: int = 8000) -> str:
     return text
 
 
+@tool
 def list_dir(path: Optional[str] = None, max_entries: int = 50) -> str:
+    """- Lists files/directories at the given path."""
     p = _resolve_path(path or ".")
     if not p.is_dir():
         return f"{p} is not a directory"
@@ -179,7 +186,9 @@ def list_dir(path: Optional[str] = None, max_entries: int = 50) -> str:
     return "\n".join(entries)
 
 
+@tool
 def open_in_vscode(path: str) -> str:
+    """- Opens a file/folder in VS Code via the `code` CLI."""
     p = _resolve_path(path)
     try:
         subprocess.Popen(["code", str(p)])
@@ -188,7 +197,9 @@ def open_in_vscode(path: str) -> str:
         return "VS Code ('code') not found in PATH"
 
 
+@tool
 def summarize_file(path: str, max_bytes: int = 16000, head_lines: int = 20) -> str:
+    """- Returns a short summary of a file (path, size, first N lines)."""
     if max_bytes is None or max_bytes <= 0:
         max_bytes = getattr(_settings, "summarize_max_bytes", 16000)
         if max_bytes <= 0:
@@ -250,7 +261,9 @@ def _search_text(target: Path, query: str, max_matches: int) -> str:
     return "\n".join(matches)
 
 
+@tool
 def search_text(query: str, path: Optional[str] = None, max_matches: int = 20) -> str:
+    """- Grep-like search (ripgrep if available) under an allowed root."""
     target = _resolve_path(path or ".")
     if not query.strip():
         return "Empty query"
@@ -268,7 +281,12 @@ def search_text(query: str, path: Optional[str] = None, max_matches: int = 20) -
         lines = lines[:max_matches] + ["... (truncated)"]
     return "\n".join(lines)
 
+@tool
 def make_dir(path: str) -> str:
+    """- Creates a directory (parents ok).
+    - Example:
+      {"tool": "make_dir", "args": {"path": "logs/run1"}}
+    """
     p = _resolve_path(path)
     try:
         p.mkdir(parents=True, exist_ok=True)
@@ -279,7 +297,13 @@ def make_dir(path: str) -> str:
         return f"Failed to create directory {p}: {e}"
 
 
+@tool
 def write_file(path: str, content: str = "", append: bool = False) -> str:
+    """- Creates or overwrites a UTF-8 text file (creates parent dirs if needed).
+    - If you only need to create an empty file, omit content or pass an empty string.
+    - If you need to append, pass append=true.
+    - IMPORTANT: `content` MUST be a valid JSON string (escape newlines as \\n).
+    """
     p = _resolve_path(path)
     try:
         if content is None:
@@ -295,7 +319,11 @@ def write_file(path: str, content: str = "", append: bool = False) -> str:
     except Exception as e:
         return f"Failed to write {p}: {e}"
 
+@tool
 def delete_path(path: str, recursive: bool = True) -> str:
+    """- Deletes a file or directory (directories are recursive by default).
+    - Safety: refuses to delete the project root itself or ~/Documents itself.
+    """
     p = _resolve_path(path)
     try:
         if p == ROOT_DIR or (DOCS_DIR and p == DOCS_DIR):
@@ -321,7 +349,9 @@ def delete_path(path: str, recursive: bool = True) -> str:
         return f"Failed to delete {p}: {e}"
 
 
+@tool
 def move_path(src: str, dest: str, overwrite: bool = False) -> str:
+    """- Moves/renames a file or directory."""
     src_p = _resolve_path(src)
     dest_p = _resolve_path(dest)
     try:
@@ -359,6 +389,7 @@ def move_path(src: str, dest: str, overwrite: bool = False) -> str:
         return f"Failed to move {src_p} -> {dest_p}: {e}"
 
 
+@tool
 def copy_path(src: str, dest: str, overwrite: bool = False) -> str:
     src_p = _resolve_path(src)
     dest_p = _resolve_path(dest)
@@ -400,6 +431,7 @@ def copy_path(src: str, dest: str, overwrite: bool = False) -> str:
         return f"Failed to copy {src_p} -> {dest_p}: {e}"
 
 
+@tool
 def rename_path(path: str, new_name: str, overwrite: bool = False) -> str:
     p = _resolve_path(path)
     try:
@@ -420,6 +452,7 @@ def rename_path(path: str, new_name: str, overwrite: bool = False) -> str:
         return f"Failed to rename {p}: {e}"
 
 
+@tool
 def replace_text(path: str, old: str, new: str, count: int = 1) -> str:
     p = _resolve_path(path)
     try:
@@ -455,6 +488,7 @@ def replace_text(path: str, old: str, new: str, count: int = 1) -> str:
         return f"Failed to edit {p}: {e}"
 
 
+@tool
 def insert_text(path: str, text: str, after: str | None = None, before: str | None = None) -> str:
     p = _resolve_path(path)
     try:
@@ -494,5 +528,6 @@ def insert_text(path: str, text: str, after: str | None = None, before: str | No
         return f"Failed to edit {p}: {e}"
 
 
+@tool
 def get_weather(city: Optional[str] = None) -> str:
     return _get_weather(city)
