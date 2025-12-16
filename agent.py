@@ -5,163 +5,12 @@ from typing import List, Dict, Callable, Any
 from openai.types.chat import ChatCompletionMessageParam
 
 from llm_client import ask_llm
-from tools.core import (
-    open_url,
-    open_app,
-    close_app,
-    get_weather,
-    read_file,
-    list_dir,
-    open_in_vscode,
-    summarize_file,
-    search_text,
-    write_file,
-    make_dir,
-    delete_path,
-    move_path,
-    copy_path,
-    rename_path,
-    replace_text,
-    insert_text,
-)
+from tools.registry import get_tools_map, build_system_tools_description
 
 
-TOOLS: Dict[str, Callable[..., str]] = {
-    "open_url": open_url,
-    "open_app": open_app,
-    "close_app": close_app,
-    "get_weather": get_weather,
-    "read_file": read_file,
-    "list_dir": list_dir,
-    "open_in_vscode": open_in_vscode,
-    "summarize_file": summarize_file,
-    "search_text": search_text,
-    "write_file": write_file,
-    "make_dir": make_dir,
-    "delete_path": delete_path,
-    "move_path": move_path,
-    "copy_path": copy_path,
-    "rename_path": rename_path,
-    "replace_text": replace_text,
-    "insert_text": insert_text,
-}
+TOOLS: Dict[str, Callable[..., str]] = get_tools_map()
 
-SYSTEM_TOOLS_DESCRIPTION = """
-You have access to the following tools. When you want to call a tool, you MUST respond
-ONLY with valid JSON:
-- Either a single object: {"tool": "...", "args": {...}}
-- Or an array of such objects, if the user asked for multiple actions (keep the order of execution).
-
-Tools:
-
-1) open_url(url: str)
-   - Opens the given URL in the system default browser.
-   - IMPORTANT: Even if the user says "in Firefox" or "in Chrome",
-     you MUST still call only `open_url` and let the OS choose the browser.
-   - Example:
-     {"tool": "open_url", "args": {"url": "https://spotify.com"}}
-
-2) open_app(name: str)
-   - Launches a local application by name, e.g. "steam", "telegram", "firefox", "chrome", "chromium", "spotify",
-     editors like "code" / "vscode", or a terminal such as "terminal" / "gnome-terminal".
-   - The assistant may receive names like "Telegram Desktop", "гугл хром", "спотифай", "visual studio code", "терминал";
-     these will be mapped internally to the correct app.
-   - Example:
-     {"tool": "open_app", "args": {"name": "telegram"}}
-
-3) close_app(name: str)
-   - Tries to close a local application by name (Linux-only, uses 'pkill -f').
-   - Uses the same name normalization as open_app.
-   - Example:
-     {"tool": "close_app", "args": {"name": "chrome"}}
-
-4) get_weather(city: str | optional)
-   - Returns a short weather summary for the given city.
-   - If no city is provided, use the default city.
-   - Example:
-     {"tool": "get_weather", "args": {"city": "Warsaw"}}
-
-5) read_file(path: str, max_bytes?: int)
-   - Reads a text file from the project root (or a subpath) and returns its contents (truncated if too long).
-   - Paths are resolved relative to the project root; access outside root is blocked.
-   - Example:
-     {"tool": "read_file", "args": {"path": "README.md"}}
-
-6) list_dir(path?: str, max_entries?: int)
-   - Lists files/directories at the given path (default: project root).
-   - Paths are resolved relative to the project root.
-   - Example:
-     {"tool": "list_dir", "args": {"path": "cpp"}}
-
-7) open_in_vscode(path: str)
-   - Opens the given file or folder in VS Code (uses the 'code' CLI).
-   - Paths are resolved relative to the project root.
-   - Example:
-     {"tool": "open_in_vscode", "args": {"path": "cpp/actions.cpp"}}
-
-8) summarize_file(path: str, max_bytes?: int, head_lines?: int)
-   - Returns a short summary: path, size, and the first N lines (truncated).
-   - Example:
-     {"tool": "summarize_file", "args": {"path": "README.md", "head_lines": 30}}
-
-9) search_text(query: str, path?: str, max_matches?: int)
-   - Grep-like search (using ripgrep) under the project root.
-   - Example:
-     {"tool": "search_text", "args": {"query": "window_close_last", "path": "cpp"}}
-
-10) write_file(path: str, content?: str, append?: bool)
-    - Creates or overwrites a text file (creates parent directories if needed).
-    - If you only need to create an empty file, omit content or pass an empty string.
-    - If the user asks to "write/put/save/запиши/напиши/вставь" some text into a file, pass that text as `content`.
-    - If the user asks to "append/допиши/добавь/в конец", set `append: true` instead of overwriting.
-    - IMPORTANT: `content` MUST be a valid JSON string (escape newlines as \\n).
-    - Absolute paths or ones starting with ~ are allowed if they resolve inside the project root or Documents (~/Documents).
-    - Aliases: "current directory"/"project root" -> project root directory; "documents/..." -> ~/Documents.
-    - Example (write text):
-      {"tool": "write_file", "args": {"path": "notes/todo.txt", "content": "hello", "append": true}}
-    - Example (generate code):
-      {"tool": "write_file", "args": {"path": "ii/main.py", "content": "def main():\\n    print('hi')\\n\\nif __name__ == '__main__':\\n    main()\\n"}}
-
-11) make_dir(path: str)
-    - Creates a directory (parents ok) under the project root.
-    - Absolute/~ paths allowed if inside project root or Documents (~/Documents). Same aliases as above.
-    - Example:
-      {"tool": "make_dir", "args": {"path": "logs/run1"}}
-
-12) delete_path(path: str, recursive?: bool)
-    - Deletes a file or directory (directory deletion is recursive by default).
-    - Allowed locations: project root directory and ~/Documents.
-    - Safety: refuses to delete the project root itself or ~/Documents itself.
-    - Example (file):
-      {"tool": "delete_path", "args": {"path": "ii/zalupa.txt"}}
-    - Example (directory):
-      {"tool": "delete_path", "args": {"path": "ii"}}
-
-13) move_path(src: str, dest: str, overwrite?: bool)
-    - Moves/renames a file or directory.
-    - Example:
-      {"tool": "move_path", "args": {"src": "ii/out.txt", "dest": "documents/out.txt"}}
-
-14) copy_path(src: str, dest: str, overwrite?: bool)
-    - Copies a file or directory.
-    - Example:
-      {"tool": "copy_path", "args": {"src": "ii", "dest": "documents/ii_backup"}}
-
-15) rename_path(path: str, new_name: str, overwrite?: bool)
-    - Renames a file or directory within the same folder.
-    - Example:
-      {"tool": "rename_path", "args": {"path": "ii/out.txt", "new_name": "out_old.txt"}}
-
-16) replace_text(path: str, old: str, new: str, count?: int)
-    - Replaces exact text inside an existing UTF-8 text file (count defaults to 1; use count: 0 to replace all).
-    - Example:
-      {"tool": "replace_text", "args": {"path": "ii/main.py", "old": "print('hi')", "new": "print('hello')", "count": 1}}
-
-17) insert_text(path: str, text: str, after?: str, before?: str)
-    - Inserts text into an existing UTF-8 text file (after/before are optional anchors; if omitted, appends).
-    - Example:
-      {"tool": "insert_text", "args": {"path": "ii/main.py", "after": "def main():\\n", "text": "    print('x')\\n"}}
-
+_EXTRA_RULES = """
 RULES FOR PATH REQUESTS:
 - For any request to create a folder/file ("create/make folder/file", "создай папку/файл"), call make_dir or write_file.
 - For any request to delete/remove a file/folder ("delete/remove", "удали/удалить"), call delete_path.
@@ -186,6 +35,8 @@ Assistant:
 
 If no tool is needed, answer the user normally as text.
 """
+
+SYSTEM_TOOLS_DESCRIPTION = build_system_tools_description(extra_rules=_EXTRA_RULES)
 
 
 def make_system_message() -> ChatCompletionMessageParam:
